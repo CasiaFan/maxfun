@@ -23,7 +23,7 @@ class CustomerClustering():
         """
         Performing clustering with specified method: Xmeans, DBSCAN, hierarchical clustering
         :param df (pd.Dataframe): input df. DONT scale df now! Scalling will be took within functions
-        :param method (str): specified method. Only support 3 methods mentioned above. 'xmeans', 'dbscan', 'hc'
+        :param method (str): specified method. Only support 3 methods mentioned above. 'xmeans', 'dbscan', 'hc', 'mbkm', 'km'
         :param kwargs: arguments required for according method. See clustering_methods.py for detailed infomation
         :return: df with clustering labels
         """
@@ -43,6 +43,9 @@ class CustomerClustering():
         elif method is 'mbkm':
             logger.info("Current clustering method is Mini-Batch Kmeans! Clustering start!")
             df_labels = cm.MiniBatchKmeans(df, **kwargs)
+        elif method is 'km':
+            logger.info("Current clustering method is Kmeans! Clustering start!")
+            df_labels = cm.Kmeans(df, **kwargs)
         else:
             logger.error("Clustering method must be xmeans, dbscan or hc! Chcek your input!")
         return df_labels
@@ -53,6 +56,8 @@ class CustomerClustering():
         :param df: input df
         :param save_fig_file (str): save figure to this file
         :return: None
+        """
+        logger.info("Start to plot cluster pattern...")
         """
         # initialize a figure map with 4 columns and output each clusters pattern in a subplot
         n_cluster = len(np.unique(df['labels']))
@@ -73,12 +78,25 @@ class CustomerClustering():
             axes[int(i / 4)][i % 4].set_ylabel("time intervals")
             axes[int(i / 4)][i % 4].set_title("cluster %d" %i)
         plt.savefig(save_fig_file, dpi=320)
+        """
+        fig, axes = plt.subplot(1,1,1)
+        plt.subplots_adjust(wspace=0.5, hspace=0.5)
+        plt.legend()
+        cols = re.findall(r'X\d+', str(df.columns))
+        df.columns = range(len(cols))
+        label_mean = df.mean()
+        plt.plot(df.T, 'b', alpha=0.3)
+        plt.plot(np.array(label_mean), '-or', lw=2)
+        plt.ylabel("time intervals")
+        plt.title("Time interval patterns")
+        plt.savefig(save_fig_file)
+        logger.info("Plot done!")
         return None
 
 
 def main():
     # get input directory
-    intdir = "/home/fanzong/Desktop/RNN_prediction/enterprises-train.5-5"
+    intdir = "/home/fanzong/Desktop/RNN-prediction/enterprises-train.5-5"
     intfile = intdir + "/all_data.csv"
     method = 'mbkm'
     outdir = intdir + "/clustering-" + method
@@ -110,8 +128,16 @@ def main():
         'mbkm':{
             'kmin': 8,
             'kmax': 20,
-            'max_iter': 1000,
-            'batch_size': 1000,
+            'max_iter': 100,
+            'batch_size': 100,
+            'init': 'random',
+            'verbose': 1,
+        },
+        'km':{
+            'kmin': 8,
+            'kmax': 20,
+            'max_iter': 400,
+            'init': 'random',
             'verbose': 1,
         }
     }
@@ -121,18 +147,18 @@ def main():
     loghandler = open(logfile, "w")
     sys.stdout = loghandler
     logger.info("Read in data from %s", intfile)
-
+    """
     # get line count of input file
     line_count_cmd = "cat %s | wc -l" %intfile
     line_count = int(os.popen(line_count_cmd).read().rstrip())
-    select_ratio = 0.3
+    select_ratio = 0.2
     logger.info("There are %d lines in the input file. Randomly select %f for clustering!", line_count, select_ratio)
-
+    """
     df = pd.read_csv(intfile)
-
+    """
     select_index = random.sample(range(line_count-1), int(line_count * select_ratio))
-    df =df.ix[select_index,]
-
+    df =df.ix[select_index,]sud
+    """
     # get training set length
     training_length = len(re.findall(training_set_col_pattern, str(df.columns)))
     X_cols = ['X' + str(i) for i in range(1, 1+training_length)]
@@ -143,7 +169,7 @@ def main():
     ############################################
     df_labels = cc.clustering_run(df_train, method=method, **pars[method])
     df_labels[['customer_id', 'enterprise_id']] = df[['customer_id', 'enterprise_id']]
-    cc.plot_clustering(df_labels, save_fig_file=outdir + "/clustering_pattern.png")
+    # cc.plot_clustering(df_labels, save_fig_file=outdir + "/clustering_pattern.png")
     # split df based on there labels
     logger.info("Splitting data based on labels!")
     for label in pd.unique(df_labels['labels']):
@@ -151,6 +177,8 @@ def main():
         df_cur_label = df_labels[df_labels['labels'] == label]
         outfile = outdir + "/cluster-" + str(label) + ".csv"
         df_cur_label.to_csv(outfile)
+        # plot cluster pattern
+        cc.plot_clustering(df_cur_label, save_fig_file=outdir + "/cluster-" + str(label) + ".csv")
     logger.info("Splitting done!")
     sys.stdout = stdout_backup
     loghandler.close()
