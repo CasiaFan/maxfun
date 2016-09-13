@@ -79,7 +79,7 @@ class CustomerClustering():
             axes[int(i / 4)][i % 4].set_title("cluster %d" %i)
         plt.savefig(save_fig_file, dpi=320)
         """
-        fig, axes = plt.subplot(1,1,1)
+        plt.subplot(1,1,1)
         plt.subplots_adjust(wspace=0.5, hspace=0.5)
         plt.legend()
         cols = re.findall(r'X\d+', str(df.columns))
