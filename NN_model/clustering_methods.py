@@ -3,19 +3,18 @@ __author__ = "Arkenstone"
 
 from Xmeans import XMeans
 from check_input import CheckInput
-from sklearn.cluster import DBSCAN, MiniBatchKMeans
+from sklearn.cluster import DBSCAN, MiniBatchKMeans, KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_samples
 from scipy.cluster.hierarchy import dendrogram, linkage, cophenet, fcluster
 from scipy.spatial.distance import pdist
-from log_format import get_logger
+import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 import warnings
-
-logger = get_logger(__name__)
+import random
 
 class ClusteringMethod():
     def __init__(self):
@@ -35,7 +34,7 @@ class ClusteringMethod():
         df_scale = scaler.fit_transform(df)
         # compute DBSCAN
         db = DBSCAN(eps=eps, min_samples=min_samps, algorithm='ball_tree').fit(df_scale)
-        logger.info("Silhouette Coefficient: %0.3f", silhouette_samples(df, db.labels_))
+        logging.info("Silhouette Coefficient: %0.3f", silhouette_samples(df, db.labels_))
         df['label'] = db.labels_
         return df
 
@@ -61,7 +60,7 @@ class ClusteringMethod():
         hc_z = linkage(df_scale, method=method, metric=dist)
         # compute the cophenetic correlation coefficient to check if the clustering preserve original distances
         coph_coef, coph_dist = cophenet(hc_z, pdist(df_scale))
-        logger.info("Cophenetic correlation coefficient of this hierarchical clustering is %0.3f", coph_coef)
+        logging.info("Cophenetic correlation coefficient of this hierarchical clustering is %0.3f", coph_coef)
         # use elbow method to automatically determine the number of clusters
         last_30 = hc_z[-kmax:, 2]
         idx = np.arange(1, len(last_30)+1)
@@ -69,7 +68,7 @@ class ClusteringMethod():
         acce = np.diff(last_30, 2)
         # get the knee point: if the last iteration is the max value in acce, we want to 2 clusters
         n_clusters = acce[::-1].argmax() + 2
-        logger.info("Clusters: %d", n_clusters)
+        logging.info("Clusters: %d", n_clusters)
         # visualize the elbow method plot
         file_symbol = len(df.columns)
         out_elbow = treeplot_dir + "/" + "hc-elbow.%s.S%s.png" %(method, file_symbol)
@@ -87,7 +86,7 @@ class ClusteringMethod():
         # get labels of each point
         labels = fcluster(hc_z, n_clusters, criterion='maxclust')
         # compute the silhoutte coefficient
-        logger.info("Sihoutte coeffient of hierarchical clustering is %s", silhouette_samples(df, labels))
+        logging.info("Sihoutte coeffient of hierarchical clustering is %s", silhouette_samples(df, labels))
         df['label'] = labels
         # visualize the dendrogram clustering tree for further check
         out_dendro = treeplot_dir + "/" + "hc-dendrogram.%s.N%d.S%s.png" %(method, n_clusters, file_symbol)
@@ -127,9 +126,9 @@ class ClusteringMethod():
         scaler = StandardScaler().fit(df)
         df_scale = scaler.fit_transform(df)
         # convert df to np.array
-        logger.info("Initializing X-means clustering!")
+        logging.info("Initializing X-means clustering!")
         model = XMeans(**kwargs).fit(np.asarray(df_scale))
-        logger.info("Silhouette Coefficient: %0.3f", silhouette_samples(df, model.labels))
+        logging.info("Silhouette Coefficient: %0.3f", silhouette_samples(df, model.labels))
         df['label'] = model.labels
         return df
 
@@ -153,7 +152,7 @@ class ClusteringMethod():
         # init dictionaries to hold inetia scores, labels, BIC scores
         labels, bics, inertias = {}, {}, {}
         for n_cluster in range(kmin, kmax):
-            mbkm = MiniBatchKMeans(n_clusters=n_cluster, init='k-means++', **kwargs)
+            mbkm = MiniBatchKMeans(n_clusters=n_cluster, **kwargs)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=DeprecationWarning)
                 mbkm.fit(np.array(df_scale))
@@ -167,12 +166,43 @@ class ClusteringMethod():
             bics[n_cluster] = XMeans().BIC(np.array(df_scale), cluster_index, cur_centers)
         # get the maximum bic value and corresponding labels
         opt_n_cluster = max(bics, key=bics.get)
-        logger.debug("Optimal cluster number has BIC value %f", bics[opt_n_cluster])
+        logging.info("Optimal cluster number has BIC value %f", bics[opt_n_cluster])
         opt_labels = labels[opt_n_cluster]
-        logger.debug("The optimum clusters found is %d. And the inertia scores for each cluster count are %s", int(opt_n_cluster), str(inertias))
+        logging.info("The optimum clusters found is %d. And the inertia scores for each cluster count are %s", int(opt_n_cluster), str(inertias))
         df['labels'] = opt_labels
         return df
 
+    def Kmeans(self, df, **kwargs):
+        # similar parrameter settings with previous minibatch kmeans
+        kmin = kwargs.pop('kmin', 8)
+        kmax = kwargs.pop('kmax', 20)
+        df = CheckInput().check_na(df)
+        scaler = StandardScaler().fit(df)
+        df_scale = scaler.fit_transform(df)
+        # init dictionaries to hold inetia scores, labels, BIC scores
+        labels, bics, inertias = {}, {}, {}
+        for n_cluster in range(kmin, kmax):
+            km = KMeans(n_clusters=n_cluster, **kwargs)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=DeprecationWarning)
+                km.fit(np.array(df_scale))
+            labels[n_cluster] = km.labels_
+            cur_centers = km.cluster_centers_
+            inertias[n_cluster] = km.inertia_
+            # get index of data in each cluster
+            cluster_index = [[] for i in range(n_cluster)]
+            for i in range(n_cluster):  # or np.sort(np.unique(labels[n_cluster])) if not start with 0
+                cluster_index[i] = np.arange(len(labels[n_cluster]))[labels[n_cluster] == i]
+            bics[n_cluster] = XMeans().BIC(np.array(df_scale), cluster_index, cur_centers)
+        # get the maximum bic value and corresponding labels
+        opt_n_cluster = max(bics, key=bics.get)
+        logging.info("Optimal cluster number has BIC value %f", bics[opt_n_cluster])
+        # clustering on whole df
+        opt_labels = labels[opt_n_cluster]
+        logging.info("The optimum clusters found is %d. And the inertia scores for each cluster count are %s",
+                     int(opt_n_cluster), str(inertias))
+        df['labels'] = opt_labels
+        return df
 
     ## def SOM_clustering(self, df):
 

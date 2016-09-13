@@ -3,7 +3,6 @@ __author__ = "Arkenstone"
 
 import os
 import sys
-from log_format import get_logger
 # get current working directory -- Better to set the PYTHONPATH env variable
 #current_working_directory = "C:\Users\fanzo\PycharmProjects\maxfun"
 # sys.path.append(current_working_directory)
@@ -11,11 +10,11 @@ from connectDB.connect_db import extractDataFromDB
 from customer_classification.customer_behavior_functions import calculate_time_interval
 from os.path import isfile, isdir, exists
 from dateutil.parser import parse
+from logging.config import fileConfig
+import logging
 import pandas as pd
 import numpy as np
 import datetime as dt
-
-logger = get_logger(__name__)
 
 class trainingSetSelection():
     def __init__(self,
@@ -262,6 +261,9 @@ def main():
     logfile.close()
 
 if __name__ == "__main__":
+    log_conf_file = "logging_conf.ini"
+    fileConfig(log_conf_file, disable_existing_loggers=False)
+    logger = logging.getLogger(__name__)
     main()
 
 

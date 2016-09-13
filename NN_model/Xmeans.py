@@ -3,10 +3,8 @@ __author__ = "Arkentstone"
 
 from sklearn.metrics import euclidean_distances
 from scipy.spatial.distance import euclidean
-from log_format import get_logger
+import logging
 import numpy as np
-
-logger = get_logger(__name__)
 
 class XMeans():
     def __init__(self, kmin=2, kmax=None, init='kmeans++', **kwargs):
@@ -43,9 +41,9 @@ class XMeans():
         data = np.asarray(data)
         k = self.kmin
         # make a list to hold cluster centers
-        logger.info("Fitting with k=%d", k)
+        logging.info("Fitting with k=%d", k)
         n_samples = len(data)
-        logger.info("Initializing centers!")
+        logging.info("Initializing centers!")
         centers = None
         if self.init is 'kmeans++':
             centers = self.__k_int(data, k)
@@ -53,20 +51,20 @@ class XMeans():
             centers = np.random.random((k, data.shape[1]))
         elif isinstance(self.init, np.ndarray):
             centers = np.array(self.init, dtype=data.dtype, copy=True)
-        logger.info("Initializing clusters!")
+        logging.info("Initializing clusters!")
         clusters = self.__improve_params(data, centers)
         iter = 1
         while len(centers) < self.kmax or self.kmax is None:
             # repeat until cluster number not increment or surpass the maximum threshold
             allocated_centers = self.__improve_structure(data=data, clusters=clusters, centers=centers)
             clusters, centers = self.__improve_params(data=data, centers=allocated_centers)
-            logger.debug("There are %d clusters classified during the %d iteration", (len(centers), iter))
+            logging.debug("There are %d clusters classified during the %d iteration", (len(centers), iter))
             iter += 1
             # cluster numbers should not surpass all data point count
             if len(centers) >= len(data):
                 break
         # add label to each data point
-        logger.info("Clustering done!")
+        logging.info("Clustering done!")
         labels = np.array([-1 for i in len(data)])  # -1 means the point belongs none within the cluster
         for cur_label in range(len(centers)):
             labels[clusters[cur_label]] = cur_label
@@ -158,7 +156,7 @@ class XMeans():
                 scores[idx_cluster] = - n * M * np.log(2 * np.pi * sigma) / 2 - (n - 1) * M / 2 + n * np.log(
                     n) - n * np.log(N)
         else:
-            logger.error("Cluster numbers should not overpass the number of total data points!")
+            logging.error("Cluster numbers should not overpass the number of total data points!")
         return sum(scores) - (M + 1) * K * np.log(N) / 2
 
     @classmethod

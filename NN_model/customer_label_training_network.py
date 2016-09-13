@@ -3,13 +3,11 @@ __author__ = "Arkenstone"
 
 from keras.models import Sequential, model_from_json
 from keras.layers import Dense, Dropout
-from log_format import get_logger
 from check_input import CheckInput
+import logging
 import numpy as np
 import pandas as pd
 import os
-
-logger = get_logger(__name__)
 
 class CustomerLabelingNN():
     def __init__(self, training_set_dir, model_save_dir, training_set_col_pattern='X\d+', prediction_save_dir=None, prefix=None, train_test_ratio=4, **kwargs):
@@ -74,7 +72,7 @@ class CustomerLabelingNN():
         # get input and output dimension of the customer
         input_dim = trainX.shape[1]
         output_dim = trainY.shape[1]
-        logger.info("This network is a fully-connected network, with %d input dimension, %d output dimension and %d layers", (input_dim, output_dim, self.layer))
+        logging.info("This network is a fully-connected network, with %d input dimension, %d output dimension and %d layers", (input_dim, output_dim, self.layer))
         model = Sequential()
         # input layer
         model.add(Dense(output_dim=self.hidden_units, input_dim=input_dim, activation=self.activation))
@@ -86,14 +84,14 @@ class CustomerLabelingNN():
         # output layer
         model.add(Dense(output_dim=output_dim, input_dim=self.hidden_units, activation=self.activation))
         # compile
-        logger.info("Compiling model...")
+        logging.info("Compiling model...")
         model.compile(loss=self.loss, optimizer=self.optimizer, metrics=['accuracy'])
-        logger.info("Compiling donw!")
-        logger.info("Staring training!")
+        logging.info("Compiling donw!")
+        logging.info("Staring training!")
         model.fit(trainX, trainY, nb_epoch=self.nb_epoch, batch_size=self.batch_size)
-        logger.info("Training done!")
+        logging.info("Training done!")
         score = model.evaluate(testX, textY, batch_size=self.batch_size, verbose=1)
-        logger.info("The score of the trained model is %f", score)
+        logging.info("The score of the trained model is %f", score)
         # save model to json files
         if self.prefix:
             json_file = self.model_save_dir + "/" + self.prefix + "-model.json"
@@ -101,7 +99,7 @@ class CustomerLabelingNN():
         else:
             json_file = self.model_save_dir + "/model.json"
             model_weight_file = self.model_save_dir + "/model.weight.h5"
-        logger.info("Model is saved in %s and model weight is saved in %s", (json_file, model_weight_file))
+        logging.info("Model is saved in %s and model weight is saved in %s", (json_file, model_weight_file))
         model_json = model.to_json()
         with open(json_file, "w") as json_string:
             json_string.write(model_json)
@@ -126,23 +124,23 @@ class CustomerLabelingNN():
         model_weight_file = model_path + "/model.weight.h5"
         try:
             with open(model_file, 'r') as json_string:
-                logger.info("Loading model...")
+                logging.info("Loading model...")
                 model_json = json_string.read()
                 model = model_from_json(model_json)
+                json_string.close()
         except Exception, e:
-            logger.error("Model file is not found! This model should be provided by %s", model_path, exc_info=True)
-        json_string.close()
+            logging.error("Model file is not found! This model should be provided by %s", model_path, exc_info=True)
         model.load_weights(model_weight_file)
         model.compile(loss=self.loss, optimizer=self.optimizer, metrics=['accuracy'])
-        logger.info("Model loading done!")
-        logger.info("Predicting data!")
+        logging.info("Model loading done!")
+        logging.info("Predicting data!")
         predict = model.predict(data, batch_size=self.batch_size, verbose=1)
         predict_prob = model.predict_proba(data, batch_size=self.batch_size, verbose=1)
         return predict, predict_prob
 
 def customer_labeling():
-    intdir = "C:/Users/fanzo/Desktop/RNN-prediction/enterprises-train.5-5"
-    outdir = "C:/Users/fanzo/Desktop/RNN-prediction/enterprises-train.5-5"
+    intdir = "/home/fanzong/Desktop/RNN-prediction/enterprises-train.5-5"
+    outdir = "/home/fanzong/Desktop/RNN-prediction/enterprises-train.5-5"
 
 
 

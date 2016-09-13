@@ -1,12 +1,10 @@
 #!/usr/bin/env python2.7
 __author__ = "Arkenstone"
 
-from log_format import get_logger
 import pandas as pd
 import numpy as np
 import datetime as dt
-
-logger = get_logger(__name__)
+import warnings
 
 class CheckInput():
     def __init__(self):
@@ -22,10 +20,10 @@ class CheckInput():
         # check if na exists
         if df.isnull().any().sum():
             if deal_na is 'rm':
-                logger.warn("There are NAs in the data frame. Remove the line with NAs!")
+                warnings.warn("There are NAs in the data frame. Remove the line with NAs!")
                 df = df.ix[df.isnull().any(axis=1), :]
             elif deal_na is 'rp':
-                logger.warn("There are NAs in the data frame. Replace NAs with %s" %str(na_rp))
+                warnings.warn("There are NAs in the data frame. Replace NAs with %s" %str(na_rp))
                 df = df.fillna(na_rp)
         return df
 
@@ -36,11 +34,11 @@ class CheckInput():
         :return: none
         """
         if len([1 for i in column_names if i in df.columns.ravel()]) == len(column_names):
-            logger.debug("All checked columns %s exist." %str(column_names))
+            print "All checked columns %s exist." %str(column_names)
         else:
             not_exist_list = [i for i in column_names if i not in df.columns.ravel()]
-            logger.error("Checked columns %s not exist." %str(not_exist_list))
-        return
+            raise ValueError("Checked columns %s not exist." %str(not_exist_list))
+        return None
 
     def check_dimension(self, df1, df2, axis='row'):
         """
@@ -59,9 +57,9 @@ class CheckInput():
             dim1 = df1.shape[1]
             dim2 = df2.shape[1]
         else:
-            logger.error("Axis argument could only be 'row' or 'col'! Check your setting!")
+            raise ValueError("Axis argument could only be 'row' or 'col'! Check your setting!")
         if dim1 == dim2:
-            logger.info("Check dimension done! Pass!")
+            print "Check dimension done! Pass!"
         else:
-            logger.error("Dimensions not accord! Check your data dimensions or if you choose the wrong dimension to check! Dim of df1 is %d, dim of df2 is %d", (dim1, dim2))
-        return
+            raise ValueError("Dimensions not accord! Check your data dimensions or if you choose the wrong dimension to check! Dim of df1 is %d, dim of df2 is %d", (dim1, dim2))
+        return None

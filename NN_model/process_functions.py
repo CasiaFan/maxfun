@@ -6,7 +6,6 @@ import os
 import re
 import numpy as np
 
-logger = get_logger(__name__)
 
 def percentile_remove_outlier(df, training_set_length):
     # remove outlier records according to quantile outlier theory
@@ -18,7 +17,7 @@ def percentile_remove_outlier(df, training_set_length):
     outlier_high = q3 + (q3 - q1) * 1.5
     df_fil = df.ix[((filter_region > outlier_low) & (filter_region < outlier_high)).sum(axis=1) == training_set_length + 1,]
     df_fil.index = range(len(df_fil.index))
-    logger.info("Outlier removed! Low boundary: %f, high boundary: %f" % (outlier_low, outlier_high))
+    print "Outlier removed! Low boundary: %f, high boundary: %f" %(outlier_low, outlier_high)
     return df_fil
 
 def MinMaxScaler(df, training_set_length):

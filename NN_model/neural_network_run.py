@@ -7,15 +7,14 @@ from keras.models import Sequential, model_from_json
 from keras.layers import Dense, LSTM, Dropout
 from scipy.stats import binned_statistic
 from process_functions import *
-from log_format import get_logger
+from logging.config import fileConfig
+import logging
 import os
 import sys
 import random
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
-logger = get_logger(__name__)
 
 class NeuralNetwork():
     def __init__(self,
@@ -412,4 +411,7 @@ def main():
     sys.stdout = stdout_backup
 
 if __name__ == "__main__":
+    log_conf_file = "logging_conf.ini"
+    fileConfig(log_conf_file, disable_existing_loggers=False)
+    logger = logging.getLogger(__name__)
     main()

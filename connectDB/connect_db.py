@@ -1,14 +1,12 @@
 #!/usr/bin/env python2.7
 __author__ = "Arkenstone"
 
-from NN_model.log_format import get_logger
 import MySQLdb as msdb
 import datetime as dt
 import pandas as pd
 import numpy as np
 import random
-
-logger = get_logger(__name__)
+import logging
 
 # class for connect to database
 class extractDataFromDB:
@@ -56,7 +54,7 @@ class extractDataFromDB:
                 for j in range(len(selected)):
                     data[selected[j]].append(row[j])
         except:
-            logger.error("Error: unable to fetch data from %s" %(tbname))
+            logging.error("Error: unable to fetch data from %s" %(tbname))
         # return a data frame containing the retrieved data
         df = pd.DataFrame()
         for i in selected:
@@ -108,7 +106,7 @@ class extractDataFromDB:
                     dict_cus_recency[cus] = age
                     dict_cus_frequency[cus] = 1
         except:
-            logger.error("Error: unable to fetch data from database %s" %(tbname))
+            logging.error("Error: unable to fetch data from database %s" %(tbname))
         # convert the dic to data frame
         df_freq = pd.DataFrame.from_dict(dict_cus_frequency, orient='index')
         df_freq.columns = ['total_purchase_count_before_' + lastday]
@@ -145,14 +143,14 @@ class extractDataFromDB:
             results = db_cursor.fetchall()
             # exit the function if the return results tuple is empty
             if not results:
-                logger.warn("No data retrieved! Please check if your sql command is correct!")
+                logging.warn("No data retrieved! Please check if your sql command is correct!")
                 return pd.DataFrame()
             count = 0
             for row in results:
                 my_data[count] = row
                 count += 1
         except:
-            logger.error("Error: cannot fetch data from %s" %(tbname))
+            logging.error("Error: cannot fetch data from %s" %(tbname))
         # convert the data in dictionary ro data frame
         df = pd.DataFrame.from_dict(my_data, orient='index')
         df.columns = outID
@@ -171,14 +169,14 @@ class extractDataFromDB:
             db_cursor.execute(sql_cmd)
             results = db_cursor.fetchall()
             if not results:
-                logger.error("No data retrieved! Please check your SQL command: %s", sql_cmd)
+                logging.error("No data retrieved! Please check your SQL command: %s", sql_cmd)
             else:
                 count = 0
                 for row in results:
                     data[count] = row
                     count += 1
         except Exception, e:
-            logger.error("Cannot fetch data from %s", self.tbname, exc_info=True)
+            logging.error("Cannot fetch data from %s", self.tbname, exc_info=True)
         df = pd.DataFrame.from_dict(data, orient='index')
         if selected_cols:
             df.columns = selected_cols
