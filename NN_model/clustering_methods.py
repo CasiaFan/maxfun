@@ -34,7 +34,7 @@ class ClusteringMethod():
         df_scale = scaler.fit_transform(df)
         # compute DBSCAN
         db = DBSCAN(eps=eps, min_samples=min_samps, algorithm='ball_tree').fit(df_scale)
-        logging.info("Silhouette Coefficient: %0.3f", silhouette_samples(df, db.labels_))
+        # logging.info("Silhouette Coefficient: %s", str(silhouette_samples(df, db.labels_)))
         df['label'] = db.labels_
         return df
 
@@ -86,7 +86,7 @@ class ClusteringMethod():
         # get labels of each point
         labels = fcluster(hc_z, n_clusters, criterion='maxclust')
         # compute the silhoutte coefficient
-        logging.info("Sihoutte coeffient of hierarchical clustering is %s", silhouette_samples(df, labels))
+        # logging.info("Sihoutte coeffient of hierarchical clustering is %s", str(silhouette_samples(df, labels)))
         df['label'] = labels
         # visualize the dendrogram clustering tree for further check
         out_dendro = treeplot_dir + "/" + "hc-dendrogram.%s.N%d.S%s.png" %(method, n_clusters, file_symbol)
@@ -128,8 +128,8 @@ class ClusteringMethod():
         # convert df to np.array
         logging.info("Initializing X-means clustering!")
         model = XMeans(**kwargs).fit(np.asarray(df_scale))
-        logging.info("Silhouette Coefficient: %0.3f", silhouette_samples(df, model.labels))
-        df['label'] = model.labels
+        # logging.info("Silhouette Coefficient: %0.3s", str(silhouette_samples(df, model.labels)))
+        df['labels'] = model.labels
         return df
 
     def MiniBatchKmeans(self, df, **kwargs):

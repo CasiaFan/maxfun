@@ -25,8 +25,8 @@ class XMeans():
         self.kmin = kmin
         self.kmax = kmax
         self.init = init
-        self.bic_cutoff = kwargs.get('bic_cutoff', 1.0)
-        self.max_iter = kwargs.get('max_iteration', 1000)
+        self.bic_cutoff = kwargs.get('bic_cutoff', 10.0)
+        self.max_iter = kwargs.get('max_iteration', 400)
         self.kmeans_tole = kwargs.get('kmeans_tole', 0.025)
 
     def fit(self, data):
@@ -45,29 +45,37 @@ class XMeans():
         n_samples = len(data)
         logging.info("Initializing centers!")
         centers = None
-        if self.init is 'kmeans++':
+        if self.init == 'kmeans++':
             centers = self.__k_int(data, k)
-        elif self.init is 'random':
+        elif self.init == 'random':
             centers = np.random.random((k, data.shape[1]))
         elif isinstance(self.init, np.ndarray):
             centers = np.array(self.init, dtype=data.dtype, copy=True)
-        logging.info("Initializing clusters!")
-        clusters = self.__improve_params(data, centers)
+        logging.info("Initializing centers done! Initializing clusters!")
+        clusters, centers = self.__improve_params(data, centers)
+        logging.info(("Initilizing clusters done! Start clustering."))
         iter = 1
-        while len(centers) < self.kmax or self.kmax is None:
+        while (len(centers) < self.kmax) or (self.kmax is None):
+            logging.debug("Current iteration is %d", iter)
+            current_center_count = len(centers)
             # repeat until cluster number not increment or surpass the maximum threshold
             allocated_centers = self.__improve_structure(data=data, clusters=clusters, centers=centers)
             clusters, centers = self.__improve_params(data=data, centers=allocated_centers)
-            logging.debug("There are %d clusters classified during the %d iteration", (len(centers), iter))
+            logging.debug("There are %d clusters classified during the %d iteration", len(centers), iter)
             iter += 1
+            # if no longer splitting child clusters, stop
+            if len(centers) == current_center_count:
+                break
             # cluster numbers should not surpass all data point count
             if len(centers) >= len(data):
                 break
         # add label to each data point
-        logging.info("Clustering done!")
-        labels = np.array([-1 for i in len(data)])  # -1 means the point belongs none within the cluster
+        logging.info("Clustering done! Generating lables!")
+        labels = np.array([-1 for i in range(len(data))])  # -1 means the point belongs none within the cluster
         for cur_label in range(len(centers)):
             labels[clusters[cur_label]] = cur_label
+        logging.info("Labeling done!")
+        logging.info("All works done!")
         self.clusters = clusters
         self.centers = centers
         self.labels = labels
@@ -102,7 +110,7 @@ class XMeans():
             # choose centroid candidates by sampling with probability proportional
             # to the squared distances to closest existing centroid
             rand_vals = np.random.random_sample(n_local_trials) * current_pot
-            candidate_ids = np.searchsorted(closest_dist_sq, rand_vals)
+            candidate_ids = np.searchsorted(closest_dist_sq.cumsum(), rand_vals) # searchsorted fidn the later value's closest index in former array with solid order
             # compute distance to center candidates
             dist_to_candidates = euclidean_distances(data[candidate_ids],
                                                      data,
@@ -131,12 +139,13 @@ class XMeans():
     def BIC(self, data, clusters, centers):
         """
         Compute splitting criterion for input clusters using bayesian information criterion.
-        (modified from pyClustering/xmeans.py) ===> seem to be wrong when state the mamximum likelihood estimate for the variance
+        (modified from pyClustering/xmeans.py) ===> seem to be wrong when state the maximum likelihood estimate for the variance
         use BIC formula from github/gomeans/BIC_notes
         :param data: input data
         :param clusters (list): index of points in each cluster for which splitting criterion should be computed
         :param centers (list): centers of the clusters
-        :return: BIC value of current model. High value of splitting criterion means current structure is much better
+        :return: BIC value of current model. In this formula, the BIC values are negative.
+                Lower value of splitting criterion means current structure is much better (http://stanfordphd.com/BIC.html)
         """
         scores = [.0] * len(clusters)  # splitting criterion
         M = data.shape[1]
@@ -174,7 +183,7 @@ class XMeans():
             optim_clust = -1
             for j in range(len(centers)):
                 dist = euclidean(data[i], centers[j])
-                if dist < optim_dist or j is 0:
+                if (dist < optim_dist) or (j is 0):
                     # Must be <, not <= . So when coordinates of 2 centers are identical,
                     # only first centers will be returned with nearest points. The second one is null.
                     optim_dist = dist
@@ -207,10 +216,13 @@ class XMeans():
         stop_condition = self.kmeans_tole
         clusters = []
         iter = 0
-        while change > stop_condition or iter > self.max_iter:
+        while (change > stop_condition) and (iter < self.max_iter):
             clusters = self.__update_clusters(data, centers)
-            updated_centers = self.__update_centers(data, centers)  # get the maximum changes during this iteration
-            change = np.max(euclidean_distances(centers, updated_centers))
+            # remove clusters without any data
+            clusters = [cluster for cluster in clusters if len(cluster) > 0]
+            updated_centers = self.__update_centers(data, clusters)  # get the maximum changes during this iteration
+            change = np.max([euclidean(centers[i], updated_centers[i]) for i in range(len(updated_centers))]) # use updated centers just incase all label in same cluster
+            # logging.debug("Current change is %f", change)
             centers = updated_centers
             iter += 1
         return clusters, centers
@@ -236,11 +248,11 @@ class XMeans():
             # k-means to cluster this cluster after centroid splitting
             child_clusters, child_centers = self.__improve_params(cluster_data, child_centers)
             # determine if splitting this centroid is necessary or not. (There does exist 2 child points)
-            if len(clusters) > 1:
+            if len(child_clusters) > 1:
                 # compute the BIC criterion
-                parent_bic = self.BIC(cluster_data, clusters[idx_cluster], centers[idx_cluster])
-                child_bic = self.BIC(cluster_data, child_clusters, child_centers)
-                if child_bic - parent_bic > self.bic_cutoff:  # split the centers
+                parent_bic = self.BIC(data, [clusters[idx_cluster]], [centers[idx_cluster]])
+                child_bic = self.BIC(data, child_clusters, child_centers)
+                if parent_bic - child_bic > self.bic_cutoff:  # split the centers. In this formula, BIC value the lower the better
                     allocated_centers.append(child_centers[0])
                     allocated_centers.append(child_centers[1])
                 else:

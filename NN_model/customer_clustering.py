@@ -104,7 +104,7 @@ def main():
     # get input directory
     intdir = "/home/fanzong/Desktop/RNN-prediction/enterprises-train.5-5"
     intfile = intdir + "/all_data.csv"
-    method = 'mbkm'
+    method = 'xmeans'
     outdir = intdir + "/clustering-" + method
     training_set_col_pattern = 'X\d+'
     # make directories if not exist
@@ -117,9 +117,9 @@ def main():
     pars = {
         'xmeans':{
             'kmin': 8,
-            'kmax': 20,
-            'init': 'kmeans',
-            'bic_cutoff': 1,
+            'kmax': None,
+            'init': 'kmeans++',
+            'bic_cutoff': 100,
             'kmeans_tole': 0.01,
         },
         # time and spatial cost of these algorithms are O(n^2). May cause Memory errors.
@@ -157,7 +157,7 @@ def main():
     # get line count of input file
     line_count_cmd = "cat %s | wc -l" %intfile
     line_count = int(os.popen(line_count_cmd).read().rstrip())
-    select_ratio = 0.02
+    select_ratio = 0.001
     logger.info("There are %d lines in the input file. Randomly select %f for clustering!", line_count, select_ratio)
     """
     df = pd.read_csv(intfile)
