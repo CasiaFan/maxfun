@@ -104,7 +104,7 @@ def main():
     # get input directory
     intdir = "/home/fanzong/Desktop/RNN-prediction/enterprises-train.5-5"
     intfile = intdir + "/all_data.csv"
-    method = 'xmeans'
+    method = 'mbks'
     outdir = intdir + "/clustering-" + method
     training_set_col_pattern = 'X\d+'
     # make directories if not exist
