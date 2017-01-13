@@ -1,0 +1,8 @@
+<br>,.
+&nbsp, ,
+&lt,<
+&gt,>
+&amp,&
+&quot,"
+&apo,'
+\n,.
