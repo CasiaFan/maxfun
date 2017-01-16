@@ -18,6 +18,7 @@ import codecs
 import re
 import sqlalchemy
 import ConfigParser
+import argparse
 import pymysql
 import datetime
 import multiprocessing # for multicore machine
@@ -678,7 +679,7 @@ class Sentiment():
         df.to_sql(name=out_tb, con=engine, if_exists=mode, flavor='mysql', index=False, dtype=dtype_dict)
 
 
-def main(model_override=False, analyze_new_comment=True):
+def main(model_override=False):
     def initial_w2v_model_train(config, CommentSentiObj, PhraseSentiObj):
         fields = config.get('database', 'w2v_tb_fields')
         comment_initial_run = True
@@ -878,7 +879,7 @@ def main(model_override=False, analyze_new_comment=True):
     if model_override or not os.path.exists(phrase_lstm_trainging_file):
         run_lstm_train(PhraseSentiObj, phrase_lstm_trainging_file)
     # analysis comment imported every day
-    if analyze_new_comment:
+    if not model_override:
         start_time_str = datetime.datetime.today().strftime("%Y-%m-%d")
     else:
         start_time_str = None
@@ -922,4 +923,8 @@ if __name__ == "__main__":
     config.read('sentiment_config.ini')
     # load log format
     fileConfig("logging_conf.ini")
-    main(model_override=True, analyze_new_comment=False)
+    # get model_override variable from command line using argparse module
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_override", action='store_true')
+    args = parser.parse_args()
+    main(model_override=args.model_override)
