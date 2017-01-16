@@ -939,11 +939,8 @@ if __name__ == "__main__":
     config.read('sentiment_config.ini')
     # load log format
     fileConfig("logging_conf.ini")
-    """
     # get model_override variable from command line using argparse module
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_override", action='store_true')
     args = parser.parse_args()
     main(model_override=args.model_override)
-    """
-    main(model_override=False)

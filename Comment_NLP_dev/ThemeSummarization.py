@@ -196,7 +196,7 @@ class ThemeSummarization():
             # remove blanks
             keywords = re.sub(ur"\s+", u"", keywords)
             # remove last ,
-            keywords = re.sub(ur",", u"", keywords)
+            keywords = re.sub(ur",$", u"", keywords)
             keyword_list = re.split(u',', keywords)
             for key in keyword_list:
                 if mode == 'process_keyword':
