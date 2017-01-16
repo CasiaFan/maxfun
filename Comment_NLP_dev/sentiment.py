@@ -439,7 +439,7 @@ class Sentiment():
             logging.info("Words with specified pos will be used ...")
             sentences2tokens = np.asarray([[pair.word for pair in sentence] for sentence in sentences2tokens])
         df_formatted_sentences = pd.DataFrame(filter_sentences, columns=['formatted_comment'])
-        df_tokens = pd.DataFrame({'tokens': list(sentences2tokens)})
+        df_tokens = pd.DataFrame({'tokens': list(sentences2tokens)}, index=df_formatted_sentences.index)
         logging.info("Update IDF file ...")
         pool1 = ThreadPool(processes=self.workers)
         pool1.apply_async(self.idf_statistic, (sentences2tokens, override, update))
@@ -449,7 +449,7 @@ class Sentiment():
         time.sleep(10)
         logging.info("Extracting keywords ...")
         total_keywords = self.keywords_extraction(sentences2tokens, topk=topk, freq_thred=freq_thred, pos=self.pos_of_tags)
-        df_total_keywords = pd.DataFrame({'tags': list(total_keywords)})
+        df_total_keywords = pd.DataFrame({'tags': list(total_keywords)}, index=df_formatted_sentences.index)
         logging.info("Scoring comment sentiment ...")
         sentiScoreObj = SentimentScore(sentiment_score_file=self.sentiment_score_file,
                                        sentiment_score_tb=self.sentiment_score_tb,
@@ -460,7 +460,7 @@ class Sentiment():
                                        password=self.password,
                                        dbname=self.dbname)
         sentiment_scores = sentiScoreObj.score(sentences2tokens)
-        df_senti_score = pd.DataFrame(sentiment_scores, columns=['sentiment_score'])
+        df_senti_score = pd.DataFrame({'sentiment_score':sentiment_scores}, index=df_formatted_sentences.index)
         df = pd.concat([df_formatted_sentences, df_tokens, df_total_keywords, df_senti_score], axis=1)
         return df
 
@@ -487,7 +487,7 @@ class Sentiment():
             cur_meals = mealObj.normalize(enterprise_comments, enterprise)
             meals += cur_meals
             initial_index += cur_index
-        meal_df = pd.DataFrame({'meals': meals})
+        meal_df = pd.DataFrame({'meals': meals}, index=sentences_df.index)
         sentences_df = pd.concat([sentences_df, meal_df], axis=1)
         return sentences_df
 
@@ -889,11 +889,11 @@ def main(model_override=False):
         initial_w2v_model_train(config=config, CommentSentiObj=CommentSentiObj, PhraseSentiObj=PhraseSentiObj)
     # train lstm classifier for whole comment and phrase
     comment_lstm_training_file = config.get("model_train", "comment_label_file")
-    phrase_lstm_trainging_file = config.get("model_train", "phrase_label_file")
+    phrase_lstm_training_file = config.get("model_train", "phrase_label_file")
     if model_override or not os.path.exists(comment_lstm_training_file):
         run_lstm_train(CommentSentiObj, comment_lstm_training_file)
-    if model_override or not os.path.exists(phrase_lstm_trainging_file):
-        run_lstm_train(PhraseSentiObj, phrase_lstm_trainging_file)
+    if model_override or not os.path.exists(phrase_lstm_training_file):
+        run_lstm_train(PhraseSentiObj, phrase_lstm_training_file)
     # analysis comment imported every day
     if not model_override:
         start_time_str = datetime.datetime.today().strftime("%Y-%m-%d")
