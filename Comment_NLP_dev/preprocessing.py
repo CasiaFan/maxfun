@@ -161,7 +161,12 @@ def parse_html_tag(sentences, html_tag_file):
     tag_list = file2tuple_list(html_tag_file, ",")
     for key, value in tag_list:
         for index in range(len(sentences)):
-            sentences[index] = re.sub(key, value, sentences[index])
+            try:
+                sentences[index] = re.sub(key, value, sentences[index])
+            except Exception, e:
+                logging.error("Sentence with regular expression substitution error: %s" %sentences[index])
+                logging.error(e.message)
+                exit(-1)
     return sentences
 
 

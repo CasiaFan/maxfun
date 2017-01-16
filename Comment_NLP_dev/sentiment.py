@@ -710,6 +710,8 @@ def main(model_override=False, analyze_new_comment=True):
                 CommentSentiObj.word2vec_model_train(w2v_sentences, update=True)
             logging.info("Split whole comments into subsentences ...")
             sub_sentences = pp.sentence_splitter(w2v_sentences)
+            # ravel enclosed list
+            sub_sentences = [x for sub_sentence in sub_sentences for x in sub_sentence]
             _, sub_sentences2tokens = PhraseSentiObj.tokenizer(sub_sentences)
             if phrase_initial_run:
                 logging.info("Statistic phrase idf information ...")
@@ -920,4 +922,4 @@ if __name__ == "__main__":
     config.read('sentiment_config.ini')
     # load log format
     fileConfig("logging_conf.ini")
-    main(model_override=False, analyze_new_comment=True)
+    main(model_override=True, analyze_new_comment=False)
