@@ -7,3 +7,4 @@ numpy==1.11.1
 scikit_learn==0.18
 SQLAlchemy==1.1.4
 zhon==1.1.5
+h5py==2.6.0
