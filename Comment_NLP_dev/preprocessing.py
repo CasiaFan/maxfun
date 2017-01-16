@@ -106,9 +106,9 @@ def get_df_from_db(localhost, username, password, dbname, tbname, fields, chunks
         if not end_time:
             time_cond = " WHERE " + time_field + " <= NOW()"
         else:
-            time_cond = " WHERE " + time_field + " <= " + end_time
+            time_cond = " WHERE " + time_field + " <= '" + end_time + "'"
         if start_time:
-            time_cond += " AND " + time_field + " >=" + start_time
+            time_cond += " AND " + time_field + " >= '" + start_time + "'"
     if isinstance(tbname, unicode):
         tbname = str(tbname)
     if isinstance(tbname, str):

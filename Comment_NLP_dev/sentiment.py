@@ -397,7 +397,7 @@ class Sentiment():
         median_idf = sorted(idf_dict.values())[len(idf_dict) // 2]
         for sentence2tokens in sentences2tokens:
             # check if sentence is none after removing stop words
-            if not sentence2tokens:
+            if len(sentence2tokens) == 0:
                 keywords.append([])
                 continue
             freq = {}
@@ -439,7 +439,7 @@ class Sentiment():
             logging.info("Words with specified pos will be used ...")
             sentences2tokens = np.asarray([[pair.word for pair in sentence] for sentence in sentences2tokens])
         df_formatted_sentences = pd.DataFrame(filter_sentences, columns=['formatted_comment'])
-        df_tokens = pd.DataFrame(sentences2tokens, columns=['tokens'])
+        df_tokens = pd.DataFrame({'tokens': list(sentences2tokens)})
         logging.info("Update IDF file ...")
         pool1 = ThreadPool(processes=self.workers)
         pool1.apply_async(self.idf_statistic, (sentences2tokens, override, update))
@@ -449,7 +449,7 @@ class Sentiment():
         time.sleep(10)
         logging.info("Extracting keywords ...")
         total_keywords = self.keywords_extraction(sentences2tokens, topk=topk, freq_thred=freq_thred, pos=self.pos_of_tags)
-        df_total_keywords = pd.DataFrame(total_keywords, columns=['tags'])
+        df_total_keywords = pd.DataFrame({'tags': list(total_keywords)})
         logging.info("Scoring comment sentiment ...")
         sentiScoreObj = SentimentScore(sentiment_score_file=self.sentiment_score_file,
                                        sentiment_score_tb=self.sentiment_score_tb,
@@ -487,7 +487,7 @@ class Sentiment():
             cur_meals = mealObj.normalize(enterprise_comments, enterprise)
             meals += cur_meals
             initial_index += cur_index
-        meal_df = pd.DataFrame(np.asarray(meals), index=initial_index, columns=['meals'])
+        meal_df = pd.DataFrame({'meals': meals})
         sentences_df = pd.concat([sentences_df, meal_df], axis=1)
         return sentences_df
 
@@ -522,6 +522,7 @@ class Sentiment():
                              sorted_vocab=1)
                 vocab_dict = {}
                 model.build_vocab(sentences2tokens)
+            sentences2tokens = [list(sentence2tokens) for sentence2tokens in sentences2tokens]
             model.train(sentences2tokens)  # train the model
             # save models
             model.save(self.word2vec_model_file)
@@ -743,6 +744,12 @@ def main(model_override=False):
                 sub_sentences_df = np.concatenate((sub_sentences_df, current_row))
         sub_sentences_df = pd.DataFrame(
             sub_sentences_df.reshape((len(sub_sentences_df) / len(fields), len(fields))), columns=fields)
+        # format data type of each columns
+        for field in fields:
+            try:
+                sub_sentences_df[field] = sub_sentences_df[field].astype(sentences_df[field].dtype)
+            except:
+                sub_sentences_df[field] = sub_sentences_df[field].astype('object')
         return sub_sentences_df
 
 
@@ -788,13 +795,13 @@ def main(model_override=False):
                 # check if element is list or not
                 ele = None
                 for x in df[col]:
-                    if x:
+                    if len(x) > 0:
                         ele = x
                         break
-                if isinstance(ele, list):
+                if isinstance(ele, list) or isinstance(ele, np.ndarray):
                     df[col] = map(lambda x: " ".join(x), df[col])
-                elif isinstance(ele, np.int64):
-                    df[col] = map(int, df[col])
+                elif not ele:
+                    df[col] = map(lambda x: "", df[col])
                 else:
                     pass
             else:
@@ -834,9 +841,18 @@ def main(model_override=False):
                                       password=sentiObj.password,
                                       dbname=sentiObj.dbname)
         main_themes, sub_themes, thd_themes = themeObj.summarize(sentences, labels)
-        sentences_df['main_theme'] = main_themes
-        sentences_df['sub_theme'] = sub_themes
-        sentences_df['thd_theme'] = thd_themes
+        if len(main_themes.ravel()) > 0:
+            sentences_df['main_theme'] = main_themes
+        else:
+            sentences_df['main_theme'] = [""] * len(sentences)
+        if len(sub_themes.ravel()) > 0:
+            sentences_df['sub_theme'] = sub_themes
+        else:
+            sentences_df['sub_theme'] = [""] * len(sentences)
+        if len(thd_themes.ravel()) > 0:
+            sentences_df['thd_theme'] = thd_themes
+        else:
+            sentences_df['thd_theme'] = [""] * len(sentences)
         # output the df to db
         # format data frame for mysql_output. Complex data structure is not allowed.
         # NOTE: Convert str to datetime type should be ahead of formatting
@@ -923,8 +939,11 @@ if __name__ == "__main__":
     config.read('sentiment_config.ini')
     # load log format
     fileConfig("logging_conf.ini")
+    """
     # get model_override variable from command line using argparse module
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_override", action='store_true')
     args = parser.parse_args()
     main(model_override=args.model_override)
+    """
+    main(model_override=False)
