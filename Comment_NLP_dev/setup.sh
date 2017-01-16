@@ -23,3 +23,6 @@ echo '{"image_dim_ordering": "tf", "epsilon": 1e-07, "floatx": "float32", "backe
 
 # install requirement packages
 pip install -r requirements.txt
+
+# deactivate tensorflow
+source deactivate tensorflow
