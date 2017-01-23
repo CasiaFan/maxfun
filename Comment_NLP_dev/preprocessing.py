@@ -299,7 +299,7 @@ def remove_label_polarity_strength(labels, prefix):
     # converge multiple labels with common prefix to 3 kinds of labels
     # label format should be pos/neu/neg+\d
     # prefix is a list of neg, neu, pos labels
-    triple_labels = [re.sub(r'(%s)\d*' %("|".join(prefix)), '\\1', label) for label in labels]
+    triple_labels = [re.sub(r'(%s)\d?' %("|".join(prefix)), '\\1', label) for label in labels]
     return np.asarray(triple_labels)
 
 
