@@ -179,7 +179,7 @@ class Sentiment():
         # screen tags base on pos. If None, all pos will be extracted, ohterwise list of pos should be provided
         self.pos_of_tags = kwargs.get("tag_use_pos") or eval(config.get("tokenizing", "pos_of_tag"))
         ## params for word embedding
-        # deifne the dimensionality of feature
+        # define the dimensionality of feature
         self.vocab_dim = kwargs.get("vocab_dim") or eval(config.get("word2vec", "vocab_dim"))
         # min word frequency used for word embedding
         self.min_count = kwargs.get("min_count") or eval(config.get("word2vec", "min_count"))
