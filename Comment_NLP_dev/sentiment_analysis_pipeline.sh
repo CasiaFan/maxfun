@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # acitavte tensorflow environment first
 source activate tensorflow
-model_path=sentiment/model/phrase_lstm_model.h5
+dir=/home/maxfun/maxfun_zong/yunxiu_python_data/Comment_NLP_dev
+model_path=$dir/sentiment/model/phrase_lstm_model.h5
 if [ ! -f $model_path ]; then
-    python sentiment.py --model_override > sentiment_analysis.log
+    python $dir/sentiment.py --model_override > $dir/sentiment_analysis.log
 else
-    python sentiment.py >> sentiment_analysis.log
+    python $dir/sentiment.py >> $dir/sentiment_analysis.log
 fi
 # deactivate tensorflow
 source deactivate tensorflow
