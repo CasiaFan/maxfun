@@ -680,7 +680,7 @@ class Sentiment():
         df.to_sql(name=out_tb, con=engine, if_exists=mode, flavor='mysql', index=False, dtype=dtype_dict)
 
 
-def main(model_override=False):
+def main_total_run(model_override=False, start_date=None, end_date=None):
     def initial_w2v_model_train(config, CommentSentiObj, PhraseSentiObj):
         fields = config.get('database', 'w2v_tb_fields')
         comment_initial_run = True
@@ -896,9 +896,17 @@ def main(model_override=False):
         run_lstm_train(PhraseSentiObj, phrase_lstm_training_file)
     # analysis comment imported every day
     if not model_override:
-        start_time_str = datetime.datetime.today().strftime("%Y-%m-%d")
+        if not start_date:
+            start_time_str = datetime.datetime.today().strftime("%Y-%m-%d")
+        else:
+            start_time_str = start_date
+        if not end_date:
+            end_time_str = datetime.datetime.today().strftime("%Y-%m-%d")
+        else:
+            end_time_str = end_date
     else:
         start_time_str = None
+        end_time_str = None
     for sentences_df in pp.get_df_from_db(localhost=config.get('database', 'localhost'),
                                   username=config.get('database', 'username'),
                                   password=config.get('database', 'password'),
@@ -907,7 +915,8 @@ def main(model_override=False):
                                   fields=eval(config.get("database", "fields")),
                                   chunksize=eval(config.get("database", "chunksize")),
                                   time_field=config.get("database", "comment_import_time_field"),
-                                  start_time=start_time_str):
+                                  start_time=start_time_str,
+                                  end_time=end_time_str):
         # remove data without raw comments
         comment_field = config.get("database", "comment_field")
         sentences_df = sentences_df[(sentences_df[comment_field].notnull()) & (sentences_df[comment_field] != "")]
@@ -942,5 +951,7 @@ if __name__ == "__main__":
     # get model_override variable from command line using argparse module
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_override", action='store_true')
+    parser.add_argument("--start_date", type=str, default=None)
+    parser.add_argument("--end_date", type=str, default=None)
     args = parser.parse_args()
-    main(model_override=args.model_override)
+    main_total_run(model_override=args.model_override, start_date=args.start_date, end_date=args.end_date)
