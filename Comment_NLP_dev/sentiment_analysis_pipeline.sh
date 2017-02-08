@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # acitavte tensorflow environment first
 source activate tensorflow
 dir=/home/maxfun/maxfun_zong/yunxiu_python_data/Comment_NLP_dev
