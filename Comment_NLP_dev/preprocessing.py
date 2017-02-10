@@ -6,6 +6,7 @@ import re
 import numpy as np
 import pandas as pd
 import jieba.posseg
+import datetime
 from sqlalchemy import create_engine
 import pymysql
 from zhon.cedict import simp, trad
@@ -106,7 +107,9 @@ def get_df_from_db(localhost, username, password, dbname, tbname, fields, chunks
         if not end_time:
             time_cond = " WHERE " + time_field + " <= NOW()"
         else:
-            time_cond = " WHERE " + time_field + " <= '" + end_time + "'"
+            # data in end time day should be retrieved but default yyyy-mm-dd is the begining of that day
+            end_time_nextday = (datetime.datetime.strptime(end_time, "%Y-%m-%d") + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+            time_cond = " WHERE " + time_field + " <= '" + end_time_nextday + "'"
         if start_time:
             time_cond += " AND " + time_field + " >= '" + start_time + "'"
     if isinstance(tbname, unicode):
