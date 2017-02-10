@@ -479,19 +479,15 @@ class Sentiment():
             logging.error("Input dataframe doesn't have enterprise_id and comment fields! Check your input df.")
             exit(-1)
         enterprises = list(set(sentences_df['enterprise_id']))
-        meals = []
-        initial_index = []
+        meal_df = pd.DataFrame({'meals': [None] * len(sentences_df.index)}, index=sentences_df.index)
         mealObj = NameNormalization(branch_store_file=self.branch_store_file, branch_store_tb=self.branch_store_tb,
                                     localhost=self.localhost,username=self.username, password=self.password,
                                     dbname=self.dbname, enter_tb=self.enter_tb, enter_fields=self.enter_fields)
         for enterprise in enterprises:
             cur_enter_df = sentences_df['comment'][sentences_df['enterprise_id'] == enterprise]
             enterprise_comments = np.asarray(cur_enter_df)
-            cur_index = list(cur_enter_df.index)
             cur_meals = mealObj.normalize(enterprise_comments, enterprise)
-            meals += cur_meals
-            initial_index += cur_index
-        meal_df = pd.DataFrame({'meals': meals}, index=sentences_df.index)
+            meal_df.ix[cur_enter_df.index, 0] = cur_meals
         sentences_df = pd.concat([sentences_df, meal_df], axis=1)
         return sentences_df
 
