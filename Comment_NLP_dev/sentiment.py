@@ -200,6 +200,10 @@ class Sentiment():
         self.batch_size= kwargs.get("batch_size") or eval(config.get("lstm", "batch_size"))
         # activation function for network layers
         self.activation = kwargs.get("activation") or config.get("lstm", "activation")
+        # use generator or not to input data during model training (in case of memory overflow)
+        self.use_generator = kwargs.get("use_generator") or eval(config.get("lstm", "use_generator"))
+        # number of samples returned each time by generator
+        self.generator_chunksize = kwargs.get("generator_chunksize") or eval(config.get("lstm", "generator_chunksize"))
         # dummy labeling header during lstm model training and prediction
         self.lstm_label_header = kwargs.get("lstm_label_header") or eval(config.get("lstm", "lstm_label_header"))
         ## params for model save path
@@ -569,22 +573,36 @@ class Sentiment():
         return word2index, word2vec, formatedSentences2index
 
 
-    def _format_lstm_model_training_data(self, sentences2index, word2index, word2vec, label):
+    def _format_lstm_model_training_data(self, sentences2index, label, word2index, word2vec):
         """
         :param sentences2index: list of sentences with token indexes
-        :param word2vec: word2vec dictionary
-        :param polarity_dgr: labels
-        :return:
+        :param label: labels corresponding to each sentence
+        :param word2vec: word2vec dictionary used for initial weight
+        :param word2index: word index in model
         """
         # All words count whose frequencies are larger than 5. The extra +1 represents those words whose frequencies are less than 5
         word_count = len(word2vec) + 1
         embedding_weights = np.zeros((word_count, self.vocab_dim))
         for word, index in word2index.items():
-            embedding_weights[index, :] = word2vec[word]
+            embedding_weights[index] = word2vec[word]
         # dummy encoding of labels
         dummy_labels = np.asarray(pd.get_dummies(label))
         train_x, test_x, train_y, test_y = train_test_split(sentences2index, dummy_labels, test_size=0.2)
         return train_x, test_x, train_y, test_y, embedding_weights
+
+
+    def _train_test_data_generator(self, train_data, test_data):
+        # return a generator with yielding batch of sample data each time where batch is defined in self.batch_size
+        train_data = np.asarray(train_data)
+        test_data = np.asarray(test_data)
+        try:
+            assert len(train_data) == len(test_data)
+        except:
+            logging.error("Train data should have same length with test data when yield generator!")
+            exit(-1)
+        while 1:
+            for i in range(0, len(train_data), self.batch_size):
+                yield (train_data[i:i+self.batch_size], test_data[i:i+self.batch_size])
 
 
     def _lstm_model_training(self, train_x, train_y, test_x, test_y, embedding_weights):
@@ -601,9 +619,15 @@ class Sentiment():
         # model.add(Dropout(0.2))
         model.add(Dense(output_dim=train_y.shape[1], activation=self.activation))
         model.compile(loss='categorical_crossentropy', optimizer='rmsprop',metrics=['categorical_accuracy'])
-        model.fit(train_x, train_y, batch_size=self.batch_size, nb_epoch=self.nb_epoch,validation_data=(test_x, test_y))
-        # evaluate the model
-        score = model.evaluate(train_x, train_y, self.batch_size)
+        if not self.use_generator:
+            model.fit(train_x, train_y, batch_size=self.batch_size, nb_epoch=self.nb_epoch,validation_data=(test_x, test_y))
+            # evaluate the model
+            score = model.evaluate(train_x, train_y, self.batch_size)
+        else:
+            train_generator = self._train_test_data_generator(train_x, train_y)
+            test_generator = self._train_test_data_generator(test_x, test_y)
+            model.fit_generator(generator=train_generator, samples_per_epoch=self.generator_chunksize, nb_epoch=self.nb_epoch, validation_data=test_generator, nb_val_samples=self.generator_chunksize)
+            score = model.evaluate_generator(generator=train_generator, val_samples=self.generator_chunksize)
         # save model and model weight
         save_model(model, self.lstm_model_file)
         logging.info("Evaluating lstm model score... ")
@@ -624,9 +648,16 @@ class Sentiment():
         logging.info("Convert document tokens to word index ...")
         word2index, word2vec, formatedSentences2index = self._document2index(sentences2tokens, model)
         logging.info("Training LSTM model for sentiment analysis using word2vec as initial weights and token index matrix ...")
-        train_x, test_x, train_y, test_y, embedding_weights = self._format_lstm_model_training_data(formatedSentences2index, word2index, word2vec, labels)
+        train_x, test_x, train_y, test_y, embedding_weights = self._format_lstm_model_training_data(formatedSentences2index, labels, word2index, word2vec)
         self._lstm_model_training(train_x, train_y, test_x, test_y, embedding_weights)
         logging.info("LSTM classifier for sentiment analysis done!")
+
+
+    def _predict_data_generator(self, data):
+        predict_data = np.asarray(data)
+        while 1:
+            for i in range(0, len(data), self.batch_size):
+                yield data[i:i+self.batch_size]
 
 
     def lstm_predict(self, sentences):
@@ -639,6 +670,9 @@ class Sentiment():
         logging.info("Loading trained lstm model ...")
         lstm_model = load_model(self.lstm_model_file)
         logging.info("Predicting input sentence labels ...")
+        # if self.use_generator:
+        #     predict_dummy_class = lstm_model.predict_generator(generator=self._predict_data_generator(formatedSentences2index), val_samples=self.generator_chunksize)
+        #     predict_class = np.asarray([self.lstm_label_header[list(label).index(1)] for label in predict_dummy_class])
         predict_dummy_class = lstm_model.predict_classes(formatedSentences2index)
         # restore dummy labels to initial degree labels
         predict_class = np.asarray([self.lstm_label_header[label] for label in predict_dummy_class])
@@ -680,7 +714,7 @@ class Sentiment():
         df.to_sql(name=out_tb, con=engine, if_exists=mode, flavor='mysql', index=False, dtype=dtype_dict)
 
 
-def main_total_run(model_override=False, start_date=None, end_date=None):
+def main_total_run(config, model_override=False, start_date=None, end_date=None):
     def initial_w2v_model_train(config, CommentSentiObj, PhraseSentiObj):
         fields = config.get('database', 'w2v_tb_fields')
         comment_initial_run = True
@@ -774,13 +808,13 @@ def main_total_run(model_override=False, start_date=None, end_date=None):
     def run_lstm_train(sentiObj, lstm_training_file):
         lstm_fields = ['comment', 'label']
         sentences, labels = pp.readInTrainingSetFromFile(lstm_training_file, fields=lstm_fields)
-        # too few neu samples. Remove them to improve model preformance
+        # too few neu samples. Remove them to improve model performance
         sentences = [sentences[index] for index in range(len(labels)) if labels[index] != 'neu']
         labels = [label for label in labels if label != 'neu']
         # normalize each group sample count
-        # sentences, labels = normalize_data_groups(sentences, labels)
+        # sentences, labels = pp.normalize_data_groups(sentences, labels)
         # remove polarity strength
-        labels = pp.remove_label_polarity_strength(labels, prefix=['pos', 'neg'])
+        labels = pp.remove_label_polarity_strength(labels, prefix=sentiObj.lstm_label_header)
         sentiObj.lstm_model_train(sentences, labels)
 
 
@@ -818,13 +852,13 @@ def main_total_run(model_override=False, start_date=None, end_date=None):
         sentences = sentences_df['formatted_comment']
         # get prob of labeling neg and pos
         labels, labels_prob = sentiObj.lstm_predict(sentences)
-        label1_prob = np.asarray([label1 for label1, label2 in labels_prob])
-        label2_prob = np.asarray([label2 for label1, label2 in labels_prob])
         sentences_df['label'] = labels
-        label1_header = "prob_" + sentiObj.lstm_label_header[0]
-        label2_header = "prob_" + sentiObj.lstm_label_header[1]
-        sentences_df[label1_header] = label1_prob
-        sentences_df[label2_header] = label2_prob
+        label_prob_dict = {}
+        n_label = len(labels_prob[0])
+        for i in range(n_label):
+            label_header = "prob_" + sentiObj.lstm_label_header[i]
+            label_prob_dict[label_header] = np.asarray([probs[i] for probs in labels_prob])
+            sentences_df[label_header] = label_prob_dict[label_header]
         # get themes
         themeObj = ThemeSummarization(process_keyword_rule_file=config.get("sentiment", "process_keyword_rule_file"),
                                       experience_keyword_rule_file=config.get("sentiment", "experience_keyword_rule_file"),
@@ -890,9 +924,9 @@ def main_total_run(model_override=False, start_date=None, end_date=None):
     # train lstm classifier for whole comment and phrase
     comment_lstm_training_file = config.get("model_train", "comment_label_file")
     phrase_lstm_training_file = config.get("model_train", "phrase_label_file")
-    if model_override or not os.path.exists(comment_lstm_training_file):
+    if model_override or not os.path.exists(CommentSentiObj.lstm_model_file):
         run_lstm_train(CommentSentiObj, comment_lstm_training_file)
-    if model_override or not os.path.exists(phrase_lstm_training_file):
+    if model_override or not os.path.exists(PhraseSentiObj.lstm_model_file):
         run_lstm_train(PhraseSentiObj, phrase_lstm_training_file)
     # analysis comment imported every day
     if not model_override:
@@ -954,4 +988,4 @@ if __name__ == "__main__":
     parser.add_argument("--start_date", type=str, default=None)
     parser.add_argument("--end_date", type=str, default=None)
     args = parser.parse_args()
-    main_total_run(model_override=args.model_override, start_date=args.start_date, end_date=args.end_date)
+    main_total_run(config=config, model_override=args.model_override, start_date=args.start_date, end_date=args.end_date)
