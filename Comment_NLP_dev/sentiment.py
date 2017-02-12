@@ -1070,6 +1070,7 @@ if __name__ == "__main__":
     # load log format
     fileConfig("logging_conf.ini")
     # get model_override variable from command line using argparse module
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_override", action='store_true')
     parser.add_argument("--database_override", action='store_true')
@@ -1077,3 +1078,5 @@ if __name__ == "__main__":
     parser.add_argument("--end_date", type=str, default=None)
     args = parser.parse_args()
     main_total_run(config=config, model_override=args.model_override, database_override=args.database_override, start_date=args.start_date, end_date=args.end_date)
+    """
+    main_total_run(config=config, start_date='2017-02-01', end_date='2017-02-10')
