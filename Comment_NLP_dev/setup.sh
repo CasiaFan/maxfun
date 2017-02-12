@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # install latest version of anaconda
 if !command -v conda 2>/dev/null; then
     anaconda_archive_path=https://repo.continuum.io/archive/
