@@ -138,6 +138,25 @@ class SentimentScore():
         return np.asarray(total_score)
 
 
+    @staticmethod
+    def adjust_rating(phrases_df, rating_field, sentiment_field):
+        logging.info("Adjusting rating using whole comment sentiment and predicted sentiment ...")
+        # use whole comment rating to rate separated phrases
+        sentiment_score_array = np.asarray(phrases_df[sentiment_field]).copy()
+        # 5 for pos and 0 for neg
+        sentiment_score_array[sentiment_score_array == u'neg'] = 1
+        sentiment_score_array[sentiment_score_array == u'pos'] = 5
+        rating_score_array = np.asarray(phrases_df[rating_field]).astype(float)
+        # statistic count of conflict between rating and predict sentiment: score difference >= 3
+        diff_array = np.abs(rating_score_array - sentiment_score_array)
+        conflict_count = (diff_array >= 3).sum()
+        logging.warning("Number of conflicts between comment rating and predicted sentiment labels: {}/{}".format(conflict_count, len(diff_array)))
+        # add comment rating and calculate their average score
+        adjust_score_array = (sentiment_score_array / 2.0 + rating_score_array / 2.0).astype(int)
+        phrases_df['adjusted_rating'] = adjust_score_array
+        return phrases_df
+
+
 class Sentiment():
     def __init__(self, config=None, **kwargs):
         ## If reference table is specified, reference file will be ignored
@@ -710,7 +729,7 @@ class Sentiment():
         df.to_sql(name=out_tb, con=engine, if_exists=mode, flavor='mysql', index=False, dtype=dtype_dict)
 
 
-def main_total_run(config, model_override=False, start_date=None, end_date=None):
+def main_total_run(config, model_override=False, database_override=False, start_date=None, end_date=None):
     def initial_w2v_model_train(config, CommentSentiObj, PhraseSentiObj):
         fields = config.get('database', 'w2v_tb_fields')
         comment_initial_run = True
@@ -849,6 +868,10 @@ def main_total_run(config, model_override=False, start_date=None, end_date=None)
         # get prob of labeling neg and pos
         labels, labels_prob = sentiObj.lstm_predict(sentences)
         sentences_df['label'] = labels
+        # adjust rating with whole comment rating and predicted sentiment score
+        rating_field = config.get("rating_score", "rating_field")
+        sentiment_field = config.get("rating_score", "sentiment_field")
+        sentences_df = SentimentScore.adjust_rating(phrases_df=sentences_df, rating_field=rating_field, sentiment_field=sentiment_field)
         label_prob_dict = {}
         n_label = len(labels_prob[0])
         for i in range(n_label):
@@ -925,7 +948,11 @@ def main_total_run(config, model_override=False, start_date=None, end_date=None)
     if model_override or not os.path.exists(PhraseSentiObj.lstm_model_file):
         run_lstm_train(PhraseSentiObj, phrase_lstm_training_file)
     # analysis comment imported every day
-    if not model_override:
+    if model_override:
+        start_time_str = None
+        end_time_str = None
+        database_override = True
+    if not database_override:
         if not start_date:
             start_time_str = datetime.datetime.today().strftime("%Y-%m-%d")
         else:
@@ -954,7 +981,7 @@ def main_total_run(config, model_override=False, start_date=None, end_date=None)
         comment_topk = eval(config.get("tokenizing", "comment_topk"))
         # whole sentences training and prediction
         total_df = run_predict_word2vec_update(config, CommentSentiObj, sentences_df, comment_topk)
-        if comment_lstm_tb_override and model_override:
+        if comment_lstm_tb_override and database_override:
             run_lstm_predict(config=config, sentiObj=CommentSentiObj, sentences_df=total_df, tbname=config.get("database", "comment_output_tbname"), mode='comment')
             comment_lstm_tb_override = False
         else:
@@ -964,7 +991,7 @@ def main_total_run(config, model_override=False, start_date=None, end_date=None)
         phrase_topk = eval(config.get("tokenizing", "phrase_topk"))
         sub_sentences_df = run_sub_sentences_extraction(config, sentences_df)
         sub_total_df = run_predict_word2vec_update(config, PhraseSentiObj, sub_sentences_df, phrase_topk)
-        if phrase_lstm_tb_override and model_override:
+        if phrase_lstm_tb_override and database_override:
             run_lstm_predict(config, PhraseSentiObj, sub_total_df, tbname=config.get("database", "phrase_output_tbname"))
             phrase_lstm_tb_override = False
         else:
@@ -981,7 +1008,8 @@ if __name__ == "__main__":
     # get model_override variable from command line using argparse module
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_override", action='store_true')
+    parser.add_argument("--database_override", action='store_true')
     parser.add_argument("--start_date", type=str, default=None)
     parser.add_argument("--end_date", type=str, default=None)
     args = parser.parse_args()
-    main_total_run(config=config, model_override=args.model_override, start_date=args.start_date, end_date=args.end_date)
+    main_total_run(config=config, model_override=args.model_override, database_override=args.database_override, start_date=args.start_date, end_date=args.end_date)
