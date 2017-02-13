@@ -138,25 +138,6 @@ class SentimentScore():
         return np.asarray(total_score)
 
 
-    @staticmethod
-    def adjust_rating(phrases_df, rating_field, sentiment_field):
-        logging.info("Adjusting rating using whole comment sentiment and predicted sentiment ...")
-        # use whole comment rating to rate separated phrases
-        sentiment_score_array = np.asarray(phrases_df[sentiment_field]).copy()
-        # 5 for pos and 0 for neg
-        sentiment_score_array[sentiment_score_array == u'neg'] = 1
-        sentiment_score_array[sentiment_score_array == u'pos'] = 5
-        rating_score_array = np.asarray(phrases_df[rating_field]).astype(float)
-        # statistic count of conflict between rating and predict sentiment: score difference >= 3
-        diff_array = np.abs(rating_score_array - sentiment_score_array)
-        conflict_count = (diff_array >= 3).sum()
-        logging.warning("Number of conflicts between comment rating and predicted sentiment labels: {}/{}".format(conflict_count, len(diff_array)))
-        # add comment rating and calculate their average score
-        adjust_score_array = (sentiment_score_array / 2.0 + rating_score_array / 2.0).astype(int)
-        phrases_df['adjusted_rating'] = adjust_score_array
-        return phrases_df
-
-
 class Sentiment():
     def __init__(self, config=None, **kwargs):
         ## If reference table is specified, reference file will be ignored
@@ -696,6 +677,58 @@ class Sentiment():
         return predict_class, class_prob
 
 
+    @staticmethod
+    def adjust_sentiment(sentences_df, rating_field, sentiment_field, pos_field, neg_field, prob_no_diff=0.2):
+        # prob_no_diff: labels whose difference of positive prediction and negative prediction within given value will be reconsidered
+        logging.info("Adjusting predicted sentiment using whole comment rating ... ")
+        sentiment_array = np.asarray(sentences_df[sentiment_field]).copy()
+        rating_array = np.asarray(sentences_df[rating_field]).copy().astype(float)
+        # descriptions with rating == 4 is ambiguous to separate positive sentiment and negative sentiment
+        # rating == 0 means rating data is blank for this sentence
+        rating_label_array = np.asarray([None] * len(rating_array))
+        for index, value in enumerate(rating_array):
+            if value == 5:
+                rating_label_array[index] = u'pos'
+            elif value <= 3:
+                rating_label_array[index] = u'neg'
+            else:
+                pass
+        pos_prob_array = np.asarray(sentences_df[pos_field])
+        neg_prob_array = np.asarray(sentences_df[neg_field])
+        # filter sentences whose pos-neg prob discrepancy is less than 0.2 (0.4 ~ 0.6)
+        diff_bool_array = np.abs(pos_prob_array - neg_prob_array) < prob_no_diff
+        for index, value in enumerate(diff_bool_array):
+            if value and rating_label_array[index]:
+                sentiment_array[index] = rating_label_array[index]
+        sentences_df[sentiment_field] = sentiment_array
+        return sentences_df
+
+
+    @staticmethod
+    def adjust_rating(phrases_df, rating_field, sentiment_field):
+        logging.info("Adjusting rating using whole comment sentiment and predicted sentiment ...")
+        # use whole comment rating to rate separated phrases
+        sentiment_array = np.asarray(phrases_df[sentiment_field])
+        # 5 for pos and 1 for neg
+        sentiment_score_array = np.asarray([5] * len(sentiment_array))
+        for index, label in enumerate(sentiment_array):
+            if unicode(sentiment_array[index]) == u'neg':
+                sentiment_score_array[index] = 1
+        rating_score_array = np.asarray(phrases_df[rating_field]).copy().astype(float)
+        # replace rating == 0 with sentiment_score
+        for index, value in enumerate(rating_score_array):
+            if not value:
+                rating_score_array[index] = sentiment_score_array[index]
+        # statistic count of conflict between rating and predict sentiment: score difference >= 3
+        diff_array = np.abs(rating_score_array - sentiment_score_array)
+        conflict_count = (diff_array >= 3).sum()
+        logging.warning("Number of conflicts between comment rating and predicted sentiment labels: {}/{}".format(conflict_count, len(diff_array)))
+        # add comment rating and calculate their average score
+        adjust_score_array = (sentiment_score_array / 2.0 + rating_score_array / 2.0).astype(int)
+        phrases_df['adjusted_rating'] = adjust_score_array
+        return phrases_df
+
+
     def _df2sql_dtype_conversion_dict(self, df):
         cols = df.columns
         dtype_dict = {}
@@ -868,16 +901,21 @@ def main_total_run(config, model_override=False, database_override=False, start_
         # get prob of labeling neg and pos
         labels, labels_prob = sentiObj.lstm_predict(sentences)
         sentences_df['label'] = labels
-        # adjust rating with whole comment rating and predicted sentiment score
-        rating_field = config.get("rating_score", "rating_field")
-        sentiment_field = config.get("rating_score", "sentiment_field")
-        sentences_df = SentimentScore.adjust_rating(phrases_df=sentences_df, rating_field=rating_field, sentiment_field=sentiment_field)
         label_prob_dict = {}
         n_label = len(labels_prob[0])
         for i in range(n_label):
             label_header = "prob_" + sentiObj.lstm_label_header[i]
             label_prob_dict[label_header] = np.asarray([probs[i] for probs in labels_prob])
             sentences_df[label_header] = label_prob_dict[label_header]
+        rating_field = config.get("rating_score", "rating_field")
+        sentiment_field = config.get("rating_score", "sentiment_field")
+        pos_field = 'prob_pos'
+        neg_field = 'prob_neg'
+        prob_no_diff = eval(config.get("rating_score", "prob_no_diff"))
+        # adjust sentiment label with comment rating
+        sentences_df = sentiObj.adjust_sentiment(sentences_df, rating_field=rating_field, sentiment_field=sentiment_field, pos_field=pos_field, neg_field=neg_field, prob_no_diff=prob_no_diff)
+        # adjust rating with whole comment rating and predicted sentiment score
+        sentences_df = sentiObj.adjust_rating(phrases_df=sentences_df, rating_field=rating_field, sentiment_field=sentiment_field)
         # get themes
         themeObj = ThemeSummarization(process_keyword_rule_file=config.get("sentiment", "process_keyword_rule_file"),
                                       experience_keyword_rule_file=config.get("sentiment", "experience_keyword_rule_file"),
