@@ -649,14 +649,13 @@ class Sentiment():
         logging.info("LSTM classifier for sentiment analysis done!")
 
 
-    def _predict_data_generator(self, data):
-        predict_data = np.asarray(data)
-        while 1:
-            for i in range(0, len(data), self.batch_size):
-                yield data[i:i+self.batch_size]
+    def _predict_data_generator(self, sentences, chunksize=2000):
+        sentences = np.asarray(sentences)
+        for i in range(0, len(sentences), chunksize):
+            yield sentences[i:i+chunksize]
 
 
-    def lstm_predict(self, sentences):
+    def lstm_predict(self, sentences, chunksize=2000):
         logging.info("Predicting sentiment using lstm classifier... ")
         sentences = np.asarray(sentences)
         _, sentences2tokens = self.tokenizer(sentences)
@@ -666,13 +665,22 @@ class Sentiment():
         logging.info("Loading trained lstm model ...")
         lstm_model = load_model(self.lstm_model_file)
         logging.info("Predicting input sentence labels ...")
-        # if self.use_generator:
-        #     predict_dummy_class = lstm_model.predict_generator(generator=self._predict_data_generator(formatedSentences2index), val_samples=self.generator_chunksize)
-        #     predict_class = np.asarray([self.lstm_label_header[list(label).index(1)] for label in predict_dummy_class])
-        predict_dummy_class = lstm_model.predict_classes(formatedSentences2index)
-        # restore dummy labels to initial degree labels
-        predict_class = np.asarray([self.lstm_label_header[label] for label in predict_dummy_class])
-        class_prob = lstm_model.predict_proba(formatedSentences2index)
+        predict_class = []
+        class_prob = []
+        if self.use_generator:
+            for cur_formatedSentences2index in self._predict_data_generator(formatedSentences2index, chunksize=chunksize):
+                cur_predict_dummy_class = lstm_model.predict_classes(cur_formatedSentences2index)
+                # restore dummy labels to initial degree labels
+                cur_predict_class = np.asarray([self.lstm_label_header[label] for label in cur_predict_dummy_class])
+                cur_class_prob = lstm_model.predict_proba(cur_formatedSentences2index)
+                predict_class += list(cur_predict_class)
+                class_prob += list(cur_class_prob)
+            predict_class = np.asarray(predict_class)
+            class_prob = np.asarray(class_prob)
+        else:
+            predict_dummy_class = lstm_model.predict_classes((formatedSentences2index))
+            predict_class = np.asarray([self.lstm_label_header[label] for label in predict_dummy_class])
+            class_prob = lstm_model.predict_proba(formatedSentences2index)
         logging.info("Predicted label possibility assessment ...")
         return predict_class, class_prob
 
@@ -899,7 +907,8 @@ def main_total_run(config, model_override=False, database_override=False, start_
             logging.info("LSTM classifier model not exit! Check file path: %s" %sentiObj.lstm_model_file)
         sentences = sentences_df['formatted_comment']
         # get prob of labeling neg and pos
-        labels, labels_prob = sentiObj.lstm_predict(sentences)
+        predict_chunksize = eval(config.get("lstm_predict", "predict_chunksize"))
+        labels, labels_prob = sentiObj.lstm_predict(sentences, chunksize=predict_chunksize)
         sentences_df['label'] = labels
         label_prob_dict = {}
         n_label = len(labels_prob[0])
