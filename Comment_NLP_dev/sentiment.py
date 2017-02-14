@@ -5,7 +5,7 @@ __author__ = "Arkenstone"
 
 import sys
 reload(sys) # for sys.setdefaultencoding() is removed from sys when python starts
-sys.setdefaultencoding('utf8')
+sys.setdefaultencoding('utf-8')
 import numpy as np
 import jieba
 import jieba.analyse
