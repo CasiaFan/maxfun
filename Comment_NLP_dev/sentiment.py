@@ -688,9 +688,9 @@ class Sentiment():
         rating_label_array = np.asarray([None] * len(rating_array))
         for index, value in enumerate(rating_array):
             if value == 5:
-                rating_label_array[index] = u'pos'
+                rating_label_array[index] = 'pos'
             elif value <= 3:
-                rating_label_array[index] = u'neg'
+                rating_label_array[index] = 'neg'
             else:
                 pass
         pos_prob_array = np.asarray(sentences_df[pos_field])
