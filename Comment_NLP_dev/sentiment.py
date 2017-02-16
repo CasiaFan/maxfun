@@ -209,9 +209,9 @@ class Sentiment():
         ## params for model save path
         self.model_save_path = kwargs.get("model_save_path") or config.get("model_save", "model_save_path")
         self.word2vec_model_file = kwargs.get("word2vec_model_file") or config.get("model_save", "word2vec_phrase_model_file")
-        self.word2vec_vocab_file = kwargs.get("word2vec_vocab_file") or config.get("model_save", "word2vec_vocab_file")
+        self.word2vec_vocab_file = kwargs.get("word2vec_vocab_file") or config.get("model_save", "phrase_word2vec_vocab_file")
         self.lstm_model_file = kwargs.get("lstm_model_file") or config.get("model_save", "phrase_lstm_model_file")
-        self.tf_file = kwargs.get("tf_file") or config.get("model_save", "tf_file")
+        self.tf_file = kwargs.get("tf_file") or config.get("model_save", "phrase_tf_file")
         self.idf_file = kwargs.get("idf_file") or config.get("model_save", "phrase_idf_file")
         ## params for theme summarization and meal recognition
         self.branch_store_tb = kwargs.get("branch_store_tb") or config.get("database", "branch_store_tb")
@@ -512,7 +512,7 @@ class Sentiment():
                     logging.error("Word2Vec model file doesn't exist. Train it first ... ")
                     exit(-1)
                 model = Word2Vec.load(self.word2vec_model_file)
-                vocab_dict = dict([(token, model.vocab[token].count) for token in model.vocab])
+                model.build_vocab(sentences2tokens, update=True)
             else:
                 model = Word2Vec(size=self.vocab_dim,
                              window=self.window,
@@ -520,15 +520,15 @@ class Sentiment():
                              workers=self.workers,
                              iter=self.iter,
                              sorted_vocab=1)
-                vocab_dict = {}
-                model.build_vocab(sentences2tokens)
+                model.build_vocab(sentences2tokens, update=False)
             sentences2tokens = [list(sentence2tokens) for sentence2tokens in sentences2tokens]
             model.train(sentences2tokens)  # train the model
             # save models
             model.save(self.word2vec_model_file)
             # save model vocabulary
+            vocab_dict = {}
             for token in model.vocab:
-                vocab_dict[token] = vocab_dict.get(token, 0) + model.vocab[token].count
+                vocab_dict[token] = model.vocab[token].count
             sorted_vocab = sorted(vocab_dict.items(), key=lambda x: x[1], reverse=True)
             with codecs.open(self.word2vec_vocab_file, "wb", encoding="utf8") as vf:
                 for (token, count) in sorted_vocab:
@@ -609,11 +609,11 @@ class Sentiment():
                             input_length=self.maxlen,
                             weights=[embedding_weights],
                             mask_zero=True)) # mask_zero is useful in recurrent network
-        model.add(LSTM(output_dim=int(self.vocab_dim/2), activation=self.activation))
+        model.add(LSTM(input_dim=int(self.vocab_dim/2), output_dim=int(self.vocab_dim/2), activation=self.activation))
         model.add(Dropout(0.2))
         # model.add(Dense(output_dim=int(self.vocab_dim/2), activation='relu'))
         # model.add(Dropout(0.2))
-        model.add(Dense(output_dim=train_y.shape[1], activation=self.activation))
+        model.add(Dense(input_dim=int(self.vocab_dim/2), output_dim=train_y.shape[1], activation=self.activation))
         model.compile(loss='categorical_crossentropy', optimizer='rmsprop',metrics=['categorical_accuracy'])
         if not self.use_generator:
             model.fit(train_x, train_y, batch_size=self.batch_size, nb_epoch=self.nb_epoch,validation_data=(test_x, test_y))
@@ -767,7 +767,7 @@ class Sentiment():
         engine = create_engine(connect_string, encoding='utf-8')
         # engine = pymysql.connect(host=self.localhost, user=self.username, password=self.password, database=self.dbname, charset='utf8', use_unicode=True)
         dtype_dict = self._df2sql_dtype_conversion_dict(df)
-        df.to_sql(name=out_tb, con=engine, if_exists=mode, flavor='mysql', index=False, dtype=dtype_dict)
+        df.to_sql(name=out_tb, con=engine, if_exists=mode, index=False, dtype=dtype_dict)
 
 
 def main_total_run(config, model_override=False, database_override=False, start_date=None, end_date=None):
@@ -806,13 +806,15 @@ def main_total_run(config, model_override=False, database_override=False, start_
             sub_sentences = [x for sub_sentence in sub_sentences for x in sub_sentence]
             _, sub_sentences2tokens = PhraseSentiObj.tokenizer(sub_sentences)
             if phrase_initial_run:
-                logging.info("Statistic phrase idf information ...")
+                logging.info("Statistic phrase tf and idf information ...")
+                PhraseSentiObj.tf_statistic(sub_sentences2tokens, update=False)
                 PhraseSentiObj.idf_statistic(sub_sentences2tokens, override=True, update=False)
                 logging.info("Training phrase comment w2c model ...")
                 PhraseSentiObj.word2vec_model_train(np.asarray(sub_sentences), update=False)
                 phrase_initial_run = False
             else:
-                logging.info("Update phrase idf information ...")
+                logging.info("Update phrase tf and idf information ...")
+                PhraseSentiObj.tf_statistic(sub_sentences2tokens, update=True)
                 PhraseSentiObj.idf_statistic(sub_sentences2tokens, override=False, update=True)
                 logging.info("Training phrase comment w2c model ...")
                 PhraseSentiObj.word2vec_model_train(np.asarray(sub_sentences), update=True)
@@ -857,8 +859,16 @@ def main_total_run(config, model_override=False, database_override=False, start_
         total_df.index = sentences_df.index
         # merge dfs
         total_df = pd.concat([total_df, tokens_tags_df], axis=1)
+        # check model vocabulary change to determine if retrain lstm model using updated word2vec model
+        pre_wv_model = Word2Vec.load(sentiObj.word2vec_model_file)
+        pre_wv_vocab = len(pre_wv_model.vocab)
         sentiObj.word2vec_model_train(w2v_sentences, update=True)
-        return total_df
+        updated_wv_model = Word2Vec.load(sentiObj.word2vec_model_file)
+        updated_wv_vocab = len(updated_wv_model.vocab)
+        retrain_lstm = False
+        if pre_wv_vocab != updated_wv_vocab:
+            retrain_lstm = True
+        return total_df, retrain_lstm
 
 
     def run_lstm_train(sentiObj, lstm_training_file):
@@ -979,7 +989,9 @@ def main_total_run(config, model_override=False, database_override=False, start_
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     CommentSentiObj = Sentiment(config, word2vec_model_file=config.get("model_save", "word2vec_comment_model_file"),
+                         word2vec_vocab_file=config.get("model_save", "comment_word2vec_vocab_file"),
                          lstm_model_file=config.get("model_save", "comment_lstm_model_file"),
+                         tf_file=config.get("model_save", "comment_tf_file"),
                          idf_file=config.get("model_save", "comment_idf_file"))
     PhraseSentiObj = Sentiment(config)
     comment_lstm_tb_override = True
@@ -1027,7 +1039,10 @@ def main_total_run(config, model_override=False, database_override=False, start_
         comment_model_file = CommentSentiObj.lstm_model_file
         comment_topk = eval(config.get("tokenizing", "comment_topk"))
         # whole sentences training and prediction
-        total_df = run_predict_word2vec_update(config, CommentSentiObj, sentences_df, comment_topk)
+        total_df, retrain_comment_lstm = run_predict_word2vec_update(config, CommentSentiObj, sentences_df, comment_topk)
+        # retrain lstm model if vocab in word2vce model is updated
+        if retrain_comment_lstm:
+            run_lstm_train(CommentSentiObj, comment_lstm_training_file)
         if comment_lstm_tb_override and database_override:
             run_lstm_predict(config=config, sentiObj=CommentSentiObj, sentences_df=total_df, tbname=config.get("database", "comment_output_tbname"), mode='comment')
             comment_lstm_tb_override = False
@@ -1037,7 +1052,9 @@ def main_total_run(config, model_override=False, database_override=False, start_
         phrase_model_file = PhraseSentiObj.lstm_model_file
         phrase_topk = eval(config.get("tokenizing", "phrase_topk"))
         sub_sentences_df = run_sub_sentences_extraction(config, sentences_df)
-        sub_total_df = run_predict_word2vec_update(config, PhraseSentiObj, sub_sentences_df, phrase_topk)
+        sub_total_df, retrain_phrase_lstm = run_predict_word2vec_update(config, PhraseSentiObj, sub_sentences_df, phrase_topk)
+        if retrain_phrase_lstm:
+            run_lstm_train(PhraseSentiObj, phrase_lstm_training_file)
         if phrase_lstm_tb_override and database_override:
             run_lstm_predict(config, PhraseSentiObj, sub_total_df, tbname=config.get("database", "phrase_output_tbname"))
             phrase_lstm_tb_override = False
