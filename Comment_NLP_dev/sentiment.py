@@ -1079,4 +1079,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main_total_run(config=config, model_override=args.model_override, database_override=args.database_override, start_date=args.start_date, end_date=args.end_date)
     """
-    main_total_run(config=config, start_date='2017-02-01', end_date='2017-02-10')
+    main_total_run(config=config, database_override=True)
