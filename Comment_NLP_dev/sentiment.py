@@ -34,6 +34,7 @@ from keras.models import Sequential, save_model, load_model
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM
 from keras.layers.core import Dense, Dropout, Activation
+from keras.optimizers import RMSprop
 from ThemeSummarization import NameNormalization, ThemeSummarization
 from sklearn.model_selection import train_test_split
 
@@ -194,6 +195,8 @@ class Sentiment():
         self.maxlen = kwargs.get("maxlen") or eval(config.get("lstm", "maxlen"))
         # dropout rate
         self.droupout = kwargs.get("dropout") or eval(config.get("lstm", "dropout"))
+        # learning rate of optimizer
+        self.lr = kwargs.get("lr") or eval(config.get("lstm", "lr"))
         # num of epoches for lstm training
         self.nb_epoch = kwargs.get("nb_epoch") or eval(config.get("lstm", "nb_epoch"))
         # batch size during lstm training
@@ -614,7 +617,8 @@ class Sentiment():
         # model.add(Dense(output_dim=int(self.vocab_dim/2), activation='relu'))
         # model.add(Dropout(0.2))
         model.add(Dense(input_dim=int(self.vocab_dim/2), output_dim=train_y.shape[1], activation=self.activation))
-        model.compile(loss='categorical_crossentropy', optimizer='rmsprop',metrics=['categorical_accuracy'])
+        rmsprop = RMSprop(lr=self.lr)
+        model.compile(loss='categorical_crossentropy', optimizer=rmsprop, metrics=['categorical_accuracy'])
         if not self.use_generator:
             model.fit(train_x, train_y, batch_size=self.batch_size, nb_epoch=self.nb_epoch,validation_data=(test_x, test_y))
             # evaluate the model
@@ -1070,7 +1074,6 @@ if __name__ == "__main__":
     # load log format
     fileConfig("logging_conf.ini")
     # get model_override variable from command line using argparse module
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_override", action='store_true')
     parser.add_argument("--database_override", action='store_true')
@@ -1078,5 +1081,3 @@ if __name__ == "__main__":
     parser.add_argument("--end_date", type=str, default=None)
     args = parser.parse_args()
     main_total_run(config=config, model_override=args.model_override, database_override=args.database_override, start_date=args.start_date, end_date=args.end_date)
-    """
-    main_total_run(config=config, database_override=True)
