@@ -21,35 +21,37 @@ import re
 import logging
 from logging.config import fileConfig
 
-class DensityPeakCluster():
-    def __init__(self):
-        pass
+
+class WordDistance():
+    def __init__(self, word2vec_model_path, distance_outfile, text_thred=5):
+        self.word2vec_model_path = word2vec_model_path
+        self.distance_outfile = distance_outfile
+        self.text_thred = text_thred
 
 
-    def get_vocab_distance_file(self, wv_model_path, distance_outfile, text_thred=5):
+    def get_vocab_distance_file(self):
         # get pairwise distance between word in vocab
         # use word2vec model 1-word.similarity as distance
         # The similarity is just cosine distance: see here http://reference.wolfram.com/language/ref/CosineDistance.html
         # words whose frequencies are larger than text_thred will be analyzed
-        model = Word2Vec.load(wv_model_path)
+        model = Word2Vec.load(self.word2vec_model_path)
         model_vocab = model.vocab.keys()
-        filtered_vocab = [word for word in model_vocab if model.vocab[word].count >= text_thred]
+        filtered_vocab = [word for word in model_vocab if model.vocab[word].count >= self.text_thred]
         # get similarity
-        with codecs.open(distance_outfile, mode='wb', encoding='utf-8') as of:
+        with codecs.open(self.distance_outfile, mode='wb', encoding='utf-8') as of:
             for i in xrange(len(filtered_vocab)):
                 for j in xrange(i, len(filtered_vocab)):
                     distance = 1 - model.similarity(filtered_vocab[i], filtered_vocab[j])
                     of.write("{} {} {} {} {}\n".format(i, j, filtered_vocab[i], filtered_vocab[j], distance))
         of.close()
 
-
-    def load_word_distance(self, distance_outfile, tokens=None):
+    def load_word_distance(self, tokens=None):
         # word similarity file should have 5 columns corresponding to word1 index, word2 index, word1, word2, similarity
         # return a dictionary whose key is word pair and value is distance and vocabulary list
         # tokens: only load data related to given words
-        if not os.path.exists(distance_outfile):
+        if not os.path.exists(self.distance_outfile):
             logging.error("Word distance file not exits! Perform get_vocab_distance_file function first!")
-        with codecs.open(distance_outfile, encoding='utf-8') as fi:
+        with codecs.open(self.distance_outfile, encoding='utf-8') as fi:
             distance = {}
             if isinstance(tokens, type(None)):
                 vocab = []
@@ -80,6 +82,11 @@ class DensityPeakCluster():
         fi.close()
         self.distance = distance
         self.distance_vocab = np.asarray(vocab)
+
+
+class DensityPeakCluster():
+    def __init__(self):
+        pass
 
 
     def select_distance_cutoff(self):
@@ -178,10 +185,14 @@ class DensityPeakCluster():
         # distance_file_override: if true, regenerate word distance file
         # decision_save_file: plot save file for decision graph
         # distance_outfile: word distance output file
+        word_distance_obj = WordDistance(word2vec_model_path=word2vec_model_path, distance_outfile=distance_outfile,
+                                         text_thred=distance_word_thred)
         if not os.path.exists(distance_outfile) or distance_file_override:
-            self.get_vocab_distance_file(word2vec_model_path, distance_outfile, text_thred=distance_word_thred)
+            word_distance_obj.get_vocab_distance_file()
         # load word distance
-        self.load_word_distance(tokens=tokens, distance_outfile=distance_outfile)
+        word_distance_obj.load_word_distance(tokens=tokens)
+        self.distance = word_distance_obj.distance
+        self.distance_vocab = word_distance_obj.distance_vocab
         # get dc
         dc = self.select_distance_cutoff()
         # get local density
@@ -212,10 +223,127 @@ class DensityPeakCluster():
         return cluster, center_labels
 
 
+class AutoKMedoidsCluster():
+    """
+    Modified k-Medoids clustering algorithm partion concepts according to entity distributions.
+    From paper a large probabilistic semantic netword Based approach to compute term similarity
+    Return centroids and labels of given tokens in obj.centroids and obj.label format
+    """
+    def __init__(self, distance_word_thred, word2vec_model_path, distance_outfile, distance_file_override=False):
+        self.word_distance_obj = WordDistance(word2vec_model_path=word2vec_model_path, distance_outfile=distance_outfile, text_thred=distance_word_thred)
+        if not os.path.exists(distance_outfile) or distance_file_override:
+            self.word_distance_obj.get_vocab_distance_file()
+
+
+    def initialize_medoids(self, min_centroid_distance=0.8):
+        # add new centroid until maximum distance between newly centroid and other previous centroids is less than min_distance
+        # get random one word in tokens as first centroid
+        centroids = []
+        centroids.append(np.random.choice(self.distance_vocab))
+        # get candidate medoids
+        while True:
+            logging.info("Generating {} centroids now...".format(len(centroids)))
+            potential_centroid_distance = []
+            for word in self.distance_vocab:
+                word_centroid_distance = []
+                for centroid in centroids:
+                    sw1, sw2 = sorted([word, centroid])
+                    word_centroid_distance.append(self.distance[(sw1, sw2)])
+                potential_centroid_distance.append(min(word_centroid_distance))
+            # get max min potential centroid distance
+            zip_word_distance = zip(self.distance_vocab, potential_centroid_distance)
+            new_centroid, max_min_distance = max(zip_word_distance, key=lambda x: x[1])
+            if max_min_distance > min_centroid_distance:
+                # add new centroid
+                centroids.append(new_centroid)
+            else:
+                break
+        self.centroids = np.asarray(centroids)
+
+
+    def update_label(self):
+        """
+        assign each word to nearest centroid and calculate weight matrix
+        """
+        # if word-centroid label dictionary defined
+        try:
+            if self.labels:
+                logging.info("Update word-centroid label dictionary ...")
+                pass
+        except:
+            logging.info("Word-centroid label dictionary not defined, initialize one ...")
+            self.labels = {}
+        weight_matrix = np.zeros((len(self.centroids), len(self.distance_vocab)))
+        for j, word in enumerate(self.distance_vocab):
+            min_distance = np.inf
+            min_distance_centroid_index = 0
+            for i, centroid in enumerate(self.centroids):
+                sw1, sw2 = sorted([word, centroid])
+                if self.distance[(sw1, sw2)] < min_distance:
+                    self.labels[word] = centroid
+                    min_distance = self.distance[(sw1, sw2)]
+                    min_distance_centroid_index = i
+            weight_matrix[min_distance_centroid_index][j] = 1
+        self.weight_matrix = weight_matrix
+
+
+    def update_centroid(self):
+        for i, centroid in enumerate(self.centroids):
+            cluster_words = [x for x in self.distance_vocab if self.labels[x] == centroid]
+            Ki = len(cluster_words)
+            cy_distances = []
+            for cy in cluster_words:
+                cy_distance = 0
+                for cx in cluster_words:
+                    sw1, sw2 = sorted([cx, cy])
+                    cy_distance += self.distance[(sw1, sw2)]
+                cy_distances.append(cy_distance / Ki)
+            min_cy_index = np.argmin(np.asarray(cy_distances))
+            self.centroids[i] = cluster_words[min_cy_index]
+
+
+    def objective_function(self):
+        distance_matrix = np.zeros((len(self.centroids), len(self.distance_vocab)))
+        for i, centroid in enumerate(self.centroids):
+            for j, word in enumerate(self.distance_vocab):
+                sw1, sw2 = sorted([word, centroid])
+                distance_matrix[i][j] = self.distance[(sw1, sw2)]
+        return sum(np.multiply(self.weight_matrix, distance_matrix).ravel())
+
+
+    def cluster(self, tokens, delta_thred=1e-5, max_iter=400, min_centroid_distance=0.8):
+        """
+        :param delta_thred: threshold of objective function variation after centroid update
+        :param max_iter: max iteration times for centroid update
+        :param min_centroid_distance: threshold ofdistance between new centroid and existing centroids during centroids initiation
+        """
+        # get distance dict and vocab array
+        self.word_distance_obj.load_word_distance(tokens)
+        self.distance = self.word_distance_obj.distance
+        self.distance_vocab = self.word_distance_obj.distance_vocab
+        # initialize centroids
+        self.initialize_medoids(min_centroid_distance=min_centroid_distance)
+        iter = 1
+        delta = np.inf
+        while delta > delta_thred and iter <= max_iter:
+            # assign label to each word
+            self.update_label()
+            # calculate objective function result with previous centroids
+            fwm_old = self.objective_function()
+            # update centroids
+            self.update_centroid()
+            # calculate objective function result with updated centroids
+            fwm_update = self.objective_function()
+            delta = fwm_old - fwm_update
+            iter += 1
+
 
 class TokenClustering():
-    def __init__(self, method='mbkm', n_clusters=10, batch_size=100, tol=1e-4, distance_word_thred=5, distance_outfile=None, distance_file_override=False, decision_graph_file=None, show_text_thred=15, plot_result=True, cluster_fig_save_path=None):
-        self.method=method
+    def __init__(self, method='mbkm', n_clusters=10, batch_size=100, tol=1e-4,
+                 distance_word_thred=5, distance_outfile=None, distance_file_override=False, decision_graph_file=None,
+                 delta_thred=1e-5, max_iter=400, min_centroid_distance=0.8,
+                 show_text_thred=15, plot_result=True, cluster_fig_save_path=None):
+        self.method = method
         if method == 'mbkm':
             self.n_clusters = n_clusters
             self.batch_size = batch_size # batch size for mini batch kmeans clustering
@@ -225,6 +353,16 @@ class TokenClustering():
             self.distance_outfile = distance_outfile
             self.distance_file_override = distance_file_override
             self.decision_graph_file = decision_graph_file
+        elif method == 'akm':
+            self.distance_word_thred = distance_word_thred
+            self.distance_outfile = distance_outfile
+            self.distance_file_override = distance_file_override
+            self.delta_thred = delta_thred
+            self.max_iter = max_iter
+            self.min_centroid_distance = min_centroid_distance
+        else:
+            logging.error("Clustering methods could only be mbkm (MiniBatchKmeans), cfsdp (clustering using fast search and find of density peaks), akm (modified K-Medoids)!")
+            exit(-1)
         # text_thred: text count with minimum count will be displayed. Only work when word_count is specified
         self.show_text_thred = show_text_thred
         self.plot_result = plot_result
@@ -281,13 +419,28 @@ class TokenClustering():
                 assert self.distance_outfile != None
             except:
                 logging.error("Clustering method is chosen cfsdp, distance file path should be specified!")
-                distance_outfile = raw_input().strip()
+                self.distance_outfile = raw_input().strip()
             cfsdp = DensityPeakCluster()
             # get cluster, center dict with word as key and label as value
             cluster, center = cfsdp.cluster(tokens=tokens, word2vec_model_path=word2vec_model_path, distance_outfile=self.distance_outfile,
                                             distance_file_override=self.distance_file_override, decision_graph_file=self.decision_graph_file)
             centroids = center.items()
             labels = np.asarray([cluster[token] for token in tokens])
+        elif self.method == 'akm':
+            try:
+                assert self.distance_outfile != None
+            except:
+                logging.error("Clustering method is chosen akm, distance file path should be specified!")
+                self.distance_outfile = raw_input().strip()
+            akm = AutoKMedoidsCluster(distance_word_thred=self.distance_word_thred, word2vec_model_path=word2vec_model_path, distance_outfile=self.distance_outfile, distance_file_override=self.distance_file_override)
+            akm.cluster(tokens=tokens)
+            centroids = akm.centroids
+            centroids_list = list(centroids)
+            centroids = zip(centroids, range(len(centroids)))
+            labels_dict = akm.labels
+            labels = np.asarray([centroids_list.index(labels_dict[token]) for token in tokens])
+        else:
+            pass
         # return cluster centroids and label of each sample
         if self.plot_result:
             self.plot_clustering_results(tokens=tokens, word_vec=word_vecs, centroids=centroids, labels=labels, word_count=word_count)
@@ -336,28 +489,32 @@ def main():
     config.read("sentiment_config.ini")
     word2vec_model = config.get("model_save", "word2vec_comment_model_file")
     model_save_path = config.get("model_save", "model_save_path")
-    cluster_fig_save_path = model_save_path + "/token_clustering.tags.cfsdp.png"
+    cluster_fig_save_path = model_save_path + "/token_clustering.tags.akm.png"
     n_clusters = 20
-    clustering_result = model_save_path + "/clustering_result.tags.cfsdp.csv"
+    clustering_result = model_save_path + "/clustering_result.tags.akm.csv"
     # retrieve tags from database
-    localhost=config.get('database', 'localhost')
-    username=config.get('database', 'username')
-    password=config.get('database', 'password')
-    dbname=config.get('database', 'dbname')
-    tbname="comments_phrase_nlp_results"
+    localhost = config.get('database', 'localhost')
+    username = config.get('database', 'username')
+    password = config.get('database', 'password')
+    dbname = config.get('database', 'dbname')
+    tbname = "comments_phrase_nlp_results"
     field = 'tags'
-    method = 'cfsdp'
+    method = 'akm'
     distance_outfile = model_save_path + "/word_distance.txt"
     distance_file_override = False
     decision_graph_file = model_save_path + "/decision_graph.png"
     distance_word_thred = 5
     show_text_thred = 15
+    delta_thred = 1e-5
+    max_iter = 100
+    min_centroid_distance = 0.7
     tags_sentences = np.asarray(next(pp.get_df_from_db(localhost=localhost, username=username, password=password, dbname=dbname, tbname=tbname, fields=field))).ravel()
     tags_array = np.asarray([re.split(u" ", sentence) for sentence in tags_sentences if sentence])
     tags = np.asarray([x for array in tags_array for x in array])
     token_cluster_obj = TokenClustering(method=method, n_clusters=n_clusters, cluster_fig_save_path=cluster_fig_save_path, show_text_thred=show_text_thred,
                                         distance_word_thred=distance_word_thred, distance_outfile=distance_outfile,
-                                        distance_file_override=distance_file_override, decision_graph_file=decision_graph_file)
+                                        distance_file_override=distance_file_override, decision_graph_file=decision_graph_file,
+                                        delta_thred=delta_thred, max_iter=max_iter, min_centroid_distance=min_centroid_distance)
     tokens, word_count, _, labels = token_cluster_obj.clustering(word2vec_model_path=word2vec_model, tags=tags)
     with codecs.open(clustering_result, mode="wb", encoding='utf-8') as of:
         of.write("token,count,label\n")
