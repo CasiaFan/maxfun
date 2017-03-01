@@ -18,9 +18,9 @@ import datetime as dt
 
 class trainingSetSelection():
     def __init__(self,
-                 localhost="112.74.30.59",
-                 username="fanzong",
-                 password="maxfun",
+                 localhost="your_localhost",
+                 username="username",
+                 password="your_password",
                  dbname="maxfun_tp",
                  trans_tbname="transaction",
                  enter_tbname="enterprise",
@@ -250,7 +250,7 @@ def main():
     logfile = open(outdir + "/SelectingDataFromDB.log", "w")
     logger.info("Log message could be found in file: %s" % str(logfile))
     sys.stdout = logfile
-    obj_trainingSet = trainingSetSelection(localhost="112.74.30.59", username="fanzong", password="maxfun", trans_tbname="transaction", enter_tbname="enterprise")
+    obj_trainingSet = trainingSetSelection(localhost="your_localhost", username="username", password="password", trans_tbname="transaction", enter_tbname="enterprise")
     obj_trainingSet.training_set_times_range = (5, np.inf)
     obj_trainingSet.training_set_length = 5
     obj_trainingSet.init_date = dt.datetime.now() - dt.timedelta(365 * 2)
