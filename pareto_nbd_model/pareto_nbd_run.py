@@ -31,9 +31,9 @@ def real_time_run():
     # initial db connect class
     currentDB = extractDataFromDB()
     # database IP, user name, password, database selected
-    currentDB.localhost = "120.24.87.197"
-    currentDB.username = "root"
-    currentDB.password = "78iU5478oT0hg"
+    currentDB.localhost = "your_localhost"
+    currentDB.username = "username"
+    currentDB.password = "password"
     currentDB.dbname = "maxfun_qf"
     currentDB.tbname = "customer_behavior"
     currentDB.enterprise_id = "256"
@@ -58,9 +58,9 @@ def test_run_with_solidation():
     # initial db connect class
     currentDB = extractDataFromDB()
     # database IP, user name, password, database selected
-    currentDB.localhost = "120.24.87.197"
-    currentDB.username = "root"
-    currentDB.password = "78iU5478oT0hg"
+    currentDB.localhost = "localhost"
+    currentDB.username = "username"
+    currentDB.password = "password"
     currentDB.dbname = "maxfun_qf"
     currentDB.tbname = "transaction"
     currentDB.enterprise_id = "256"
