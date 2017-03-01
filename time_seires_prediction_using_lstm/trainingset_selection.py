@@ -10,9 +10,9 @@ import datetime as dt
 
 class TrainingSetSelection():
     def __init__(self,
-                 localhost="112.74.30.59",
-                 username="fanzong",
-                 password="maxfun",
+                 localhost="your_localhost",
+                 username="username",
+                 password="password",
                  dbname="maxfun_tp",
                  trans_tbname="transaction",
                  enter_tbname="enterprise",
