@@ -61,9 +61,9 @@ def customer_marker(db,
         currentDB = extractDataFromDB()
         # init the parameters required for database connection
         ###--------------TP-------------------------------###
-        currentDB.localhost = "112.74.30.59"
-        currentDB.username = "fanzong"
-        currentDB.password = "maxfun"
+        currentDB.localhost = "your_localhost"
+        currentDB.username = "username"
+        currentDB.password = "password"
         currentDB.dbname = "maxfun_tp"
         currentDB.tbname = "transaction"
         db_cursor=currentDB.connect_db()
@@ -86,9 +86,9 @@ def customer_marker(db,
         # init a database connector class
         currentDB = extractDataFromDB()
         ###------------------QA----------------------------###
-        currentDB.localhost = "120.24.87.197"
-        currentDB.username = "root"
-        currentDB.password = "78iU5478oT0hg"
+        currentDB.localhost = "your_localhost"
+        currentDB.username = "username"
+        currentDB.password = "password"
         currentDB.dbname = "maxfun_qf"
         currentDB.tbname = "transaction"
         db_cursor = currentDB.connect_db()
