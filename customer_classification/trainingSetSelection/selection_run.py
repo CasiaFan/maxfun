@@ -21,9 +21,9 @@ def retrieve_data_from_db(enterprise_list, cus_number=500, selection_type=1, out
     # initial connect db
     currentDB = extractDataFromDB()
     # initial the db connector parameters
-    currentDB.localhost = "112.74.30.59"
-    currentDB.username = "fanzong"
-    currentDB.password = "maxfun"
+    currentDB.localhost = "your_localhost"
+    currentDB.username = "username"
+    currentDB.password = "password"
     currentDB.dbname = "maxfun_tp"
     # make the output direactory if it doesn't exist
     if not os.path.exists(output_dir):
