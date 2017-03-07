@@ -29,13 +29,13 @@ class DatabaseFeedback():
         except:
             logging.error("fields from feedback table and results tablemust consist of 3 items: id, comment and sentiment label!")
             exit(-1)
-        db = pymysql.connect(self.localhost, self.username, self.password, self.dbname)
+        db = pymysql.connect(self.localhost, self.username, self.password, self.dbname, charset='utf8', use_unicode=True)
         cursor = db.cursor()
         for index in feedback_df.index:
             feedback_id = feedback_df[feedback_fields[0]][index]
             feedback_comment = feedback_df[feedback_fields[1]][index]
             feedback_sentiment = feedback_df[feedback_fields[2]][index]
-            sql_cmd = "UPDATE " + results_tb + " SET " + results_fields[2] + " = " + feedback_sentiment + " WHERE " + results_fields[0] + " = " + str(feedback_id) + " AND " + results_fields[1] + " = " + feedback_comment
+            sql_cmd = u"UPDATE {} SET {} = '{}' WHERE {} = {} AND {} = '{}'".format(results_tb, results_fields[2], feedback_sentiment, results_fields[0], feedback_id, results_fields[1], feedback_comment)
             try:
                 cursor.execute(sql_cmd)
                 # commit changes
