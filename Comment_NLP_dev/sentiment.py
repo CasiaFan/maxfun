@@ -36,6 +36,7 @@ from keras.layers.recurrent import LSTM
 from keras.layers.core import Dense, Dropout, Activation
 from keras.optimizers import RMSprop
 from ThemeSummarization import NameNormalization, ThemeSummarization
+from rule_based_correction import SentimentCorrection
 from sklearn.model_selection import train_test_split
 
 
@@ -150,6 +151,7 @@ class Sentiment():
         self.dbname = kwargs.get("dbname") or config.get("database", "dbname")
         self.enter_tb = kwargs.get("enter_tb") or config.get("database", "enter_tb")
         self.enter_fields = kwargs.get("enter_fields") or eval(config.get("database", "enter_fields"))
+
         ## params for sentence tokenizing
         # replace detailed time & price entity and cantonese
         self.entity_mark_tb = kwargs.get("entity_mark_tb") or config.get("database", "entity_mark_tb")
@@ -179,6 +181,7 @@ class Sentiment():
             self.stop_words_file = None
         # screen tags base on pos. If None, all pos will be extracted, ohterwise list of pos should be provided
         self.pos_of_tags = kwargs.get("tag_use_pos") or eval(config.get("tokenizing", "pos_of_tag"))
+
         ## params for word embedding
         # define the dimensionality of feature
         self.vocab_dim = kwargs.get("vocab_dim") or eval(config.get("word2vec", "vocab_dim"))
@@ -196,7 +199,7 @@ class Sentiment():
         # dropout rate
         self.droupout = kwargs.get("dropout") or eval(config.get("lstm", "dropout"))
         # learning rate of optimizer
-        self.lr = kwargs.get("lr") or eval(config.get("lstm", "lr"))
+        self.lr = kwargs.get("learning_rate") or eval(config.get("lstm", "learning_rate"))
         # num of epoches for lstm training
         self.nb_epoch = kwargs.get("nb_epoch") or eval(config.get("lstm", "nb_epoch"))
         # batch size during lstm training
@@ -209,6 +212,7 @@ class Sentiment():
         self.generator_chunksize = kwargs.get("generator_chunksize") or eval(config.get("lstm", "generator_chunksize"))
         # dummy labeling header during lstm model training and prediction
         self.lstm_label_header = kwargs.get("lstm_label_header") or eval(config.get("lstm", "lstm_label_header"))
+
         ## params for model save path
         self.model_save_path = kwargs.get("model_save_path") or config.get("model_save", "model_save_path")
         self.word2vec_model_file = kwargs.get("word2vec_model_file") or config.get("model_save", "word2vec_phrase_model_file")
@@ -216,6 +220,7 @@ class Sentiment():
         self.lstm_model_file = kwargs.get("lstm_model_file") or config.get("model_save", "phrase_lstm_model_file")
         self.tf_file = kwargs.get("tf_file") or config.get("model_save", "phrase_tf_file")
         self.idf_file = kwargs.get("idf_file") or config.get("model_save", "phrase_idf_file")
+
         ## params for theme summarization and meal recognition
         self.branch_store_tb = kwargs.get("branch_store_tb") or config.get("database", "branch_store_tb")
         if not self.branch_store_tb:
@@ -875,9 +880,15 @@ def main_total_run(config, model_override=False, database_override=False, start_
         return total_df, retrain_lstm
 
 
-    def run_lstm_train(sentiObj, lstm_training_file):
+    def run_lstm_train(sentiObj, lstm_training_source, source='db'):
+        # Argument source to indicate training set is from database table or file. Only 'db' or 'file' are allowed
         lstm_fields = ['comment', 'label']
-        sentences, labels = pp.readInTrainingSetFromFile(lstm_training_file, fields=lstm_fields)
+        if source == 'file':
+            sentences, labels = pp.readInTrainingSetFromFile(lstm_training_source, fields=lstm_fields)
+        elif source == 'db':
+            training_df = next(pp.get_df_from_db(sentiObj.localhost, sentiObj.username, sentiObj.password, sentiObj.dbname, lstm_training_source, lstm_fields))
+            sentences = np.asarray(training_df[lstm_fields[0]])
+            labels = np.asarray(training_df[lstm_fields[1]])
         # too few neu samples. Remove them to improve model performance
         sentences = [sentences[index] for index in range(len(labels)) if labels[index] != 'neu']
         labels = [label for label in labels if label != 'neu']
@@ -913,7 +924,7 @@ def main_total_run(config, model_override=False, database_override=False, start_
         return df
 
 
-    def run_lstm_predict(config, sentiObj, sentences_df, tbname, mode='phrase',sql_mode='replace'):
+    def run_lstm_predict(config, sentiObj, sentences_df, tbname, feedback_tb, rule_based_correction_tb=None, mode='phrase',sql_mode='replace'):
         # mode: phrase or comment. If first, use phrases as input data; else use whole comments as input data
         try:
             assert os.path.exists(sentiObj.lstm_model_file)
@@ -939,6 +950,15 @@ def main_total_run(config, model_override=False, database_override=False, start_
         sentences_df = sentiObj.adjust_sentiment(sentences_df, rating_field=rating_field, sentiment_field=sentiment_field, pos_field=pos_field, neg_field=neg_field, prob_no_diff=prob_no_diff)
         # adjust rating with whole comment rating and predicted sentiment score
         sentences_df = sentiObj.adjust_rating(phrases_df=sentences_df, rating_field=rating_field, sentiment_field=sentiment_field)
+        # correcting with end2end feedback and rules specified
+        ruleObj = SentimentCorrection(localhost=sentiObj.localhost,
+                                       username=sentiObj.username,
+                                       password=sentiObj.password,
+                                       dbname=sentiObj.dbname,
+                                       feedback_tb=feedback_tb,
+                                       rule_correction_tb=rule_based_correction_tb)
+        corrected_labels = ruleObj.correct(sentences=sentences_df[config.get("database", "comment_field")], labels=sentences_df[config.get("rating_score", "sentiment_field")])
+        sentences_df[config.get("rating_score", "sentiment_field")] = corrected_labels
         # get themes
         themeObj = ThemeSummarization(process_keyword_rule_file=config.get("sentiment", "process_keyword_rule_file"),
                                       experience_keyword_rule_file=config.get("sentiment", "experience_keyword_rule_file"),
@@ -1004,12 +1024,22 @@ def main_total_run(config, model_override=False, database_override=False, start_
         # train initial w2c model
         initial_w2v_model_train(config=config, CommentSentiObj=CommentSentiObj, PhraseSentiObj=PhraseSentiObj)
     # train lstm classifier for whole comment and phrase
-    comment_lstm_training_file = config.get("model_train", "comment_label_file")
-    phrase_lstm_training_file = config.get("model_train", "phrase_label_file")
+    try:
+        comment_lstm_train_source = config.get("database", "comment_train_tb")
+        phrase_lstm_train_source = config.get("database", "phrase_train_tb")
+        source = "db"
+    except:
+        try:
+            comment_lstm_train_source = config.get("model_train", "comment_label_file")
+            phrase_lstm_train_source = config.get("model_train", "phrase_label_file")
+            source = "file"
+        except:
+            logging.error("LSTM classifier' training set source must be provided - from mysql db or local file")
+            exit(-1)
     if model_override or not os.path.exists(CommentSentiObj.lstm_model_file):
-        run_lstm_train(CommentSentiObj, comment_lstm_training_file)
+        run_lstm_train(CommentSentiObj, comment_lstm_train_source, source=source)
     if model_override or not os.path.exists(PhraseSentiObj.lstm_model_file):
-        run_lstm_train(PhraseSentiObj, phrase_lstm_training_file)
+        run_lstm_train(PhraseSentiObj, phrase_lstm_train_source, source=source)
     # analysis comment imported every day
     if model_override:
         start_time_str = None
@@ -1031,7 +1061,7 @@ def main_total_run(config, model_override=False, database_override=False, start_
                                   username=config.get('database', 'username'),
                                   password=config.get('database', 'password'),
                                   dbname=config.get('database', 'dbname'),
-                                  tbname=config.get("database", "readin_tbname"),
+                                  tbname=config.get("database", "comment_tb"),
                                   fields=eval(config.get("database", "fields")),
                                   chunksize=eval(config.get("database", "chunksize")),
                                   time_field=config.get("database", "comment_import_time_field"),
@@ -1046,24 +1076,37 @@ def main_total_run(config, model_override=False, database_override=False, start_
         total_df, retrain_comment_lstm = run_predict_word2vec_update(config, CommentSentiObj, sentences_df, comment_topk)
         # retrain lstm model if vocab in word2vce model is updated
         if retrain_comment_lstm:
-            run_lstm_train(CommentSentiObj, comment_lstm_training_file)
+            run_lstm_train(CommentSentiObj, comment_lstm_train_source, source=source)
         if comment_lstm_tb_override and database_override:
-            run_lstm_predict(config=config, sentiObj=CommentSentiObj, sentences_df=total_df, tbname=config.get("database", "comment_output_tbname"), mode='comment')
+            run_lstm_predict(config=config, sentiObj=CommentSentiObj, sentences_df=total_df,
+                             tbname=config.get("database", "comment_output_tbname"),
+                             feedback_tb=config.get("feedback", "comment_feedback_tb"),
+                             mode='comment')
             comment_lstm_tb_override = False
         else:
-            run_lstm_predict(config=config, sentiObj=CommentSentiObj, sentences_df=total_df, tbname=config.get("database", "comment_output_tbname"), mode='comment', sql_mode='append')
+            run_lstm_predict(config=config, sentiObj=CommentSentiObj, sentences_df=total_df,
+                             tbname=config.get("database", "comment_output_tbname"),
+                             feedback_tb=config.get("feedback", "comment_feedback_tb"),
+                             mode='comment',
+                             sql_mode='append')
         # phrase training and prediction
         phrase_model_file = PhraseSentiObj.lstm_model_file
         phrase_topk = eval(config.get("tokenizing", "phrase_topk"))
         sub_sentences_df = run_sub_sentences_extraction(config, sentences_df)
         sub_total_df, retrain_phrase_lstm = run_predict_word2vec_update(config, PhraseSentiObj, sub_sentences_df, phrase_topk)
         if retrain_phrase_lstm:
-            run_lstm_train(PhraseSentiObj, phrase_lstm_training_file)
+            run_lstm_train(PhraseSentiObj, phrase_lstm_train_source, source=source)
         if phrase_lstm_tb_override and database_override:
-            run_lstm_predict(config, PhraseSentiObj, sub_total_df, tbname=config.get("database", "phrase_output_tbname"))
+            run_lstm_predict(config, PhraseSentiObj, sub_total_df,
+                             tbname=config.get("database", "phrase_output_tbname"),
+                             feedback_tb=config.get("feedback", "phrase_feedback_tb"),
+                             rule_based_correction_tb=config.get("rule_based", "phrase_sentiment_rule_based_tb"))
             phrase_lstm_tb_override = False
         else:
-            run_lstm_predict(config, PhraseSentiObj, sub_total_df, tbname=config.get("database", "phrase_output_tbname"), sql_mode="append")
+            run_lstm_predict(config, PhraseSentiObj, sub_total_df,
+                             tbname=config.get("database", "phrase_output_tbname"),
+                             feedback_tb=config.get("feedback", "phrase_feedback_tb"),
+                             sql_mode="append")
 
 
 
@@ -1074,10 +1117,16 @@ if __name__ == "__main__":
     # load log format
     fileConfig("logging_conf.ini")
     # get model_override variable from command line using argparse module
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_override", action='store_true')
-    parser.add_argument("--database_override", action='store_true')
-    parser.add_argument("--start_date", type=str, default=None)
-    parser.add_argument("--end_date", type=str, default=None)
+    parser.add_argument("--model_override", action='store_true', help="Override existing Word2Vec and LSTM model and retrain one")
+    parser.add_argument("--database_override", action='store_true', help="Use existing model to redo prediction of all data in database to override existing output database")
+    parser.add_argument("--start_date", type=str, default=None, help="Use data after this date")
+    parser.add_argument("--end_date", type=str, default=None, help="Use data befor this date")
+    if len(sys.argv[1:]) == 0 or sys.argv[1] == '--help':
+        parser.print_help()
+        parser.exit()
     args = parser.parse_args()
     main_total_run(config=config, model_override=args.model_override, database_override=args.database_override, start_date=args.start_date, end_date=args.end_date)
+    """
+    main_total_run(config=config, model_override=True, database_override=True)

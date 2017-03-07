@@ -91,7 +91,7 @@ def readInTrainingSetFromFile(file_path, fields):
     return sentences, labels
 
 
-def get_df_from_db(localhost, username, password, dbname, tbname, fields, chunksize=None, time_field=None, start_time=None, end_time=None):
+def get_df_from_db(localhost, username, password, dbname, tbname, fields=None, chunksize=None, time_field=None, start_time=None, end_time=None):
     """
     Read in comments data as dataframe from mysql database
     :param chunksize: If specified, return an iterator where chunksize is the number of rows to include in each chunk.
@@ -119,6 +119,8 @@ def get_df_from_db(localhost, username, password, dbname, tbname, fields, chunks
             fields = str(fields)
         if isinstance(fields, str):
             fields = [fields]
+        if fields == None:
+            fields = ["*"]
         sql_cmd = "SELECT " + ",".join(fields) + " FROM " + tbname + time_cond
         if chunksize:
             for cur_df in pd.read_sql(sql_cmd, con, chunksize=chunksize):
@@ -131,6 +133,8 @@ def get_df_from_db(localhost, username, password, dbname, tbname, fields, chunks
             fields = str(fields)
         if isinstance(fields, str):
             fields = [fields]
+        if fields == None:
+            fields = ["*"]
         for cur_tb in tbname:
             sql_cmd = "SELECT " + ",".join(fields) + " FROM " + cur_tb + time_cond
             if chunksize:
