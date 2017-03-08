@@ -7,10 +7,12 @@ dir=/home/maxfun/maxfun_zong/yunxiu_python_data/Comment_NLP_dev
 model_path=$dir/sentiment/model/phrase_lstm_model.h5
 echo "Analysis of comment data in $DATE start!" >> $dir/sentiment_analysis.log
 if [ ! -f $model_path ]; then
-    python $dir/sentiment.py --model_override --database_override > $dir/sentiment_analysis.log
+    python $dir/sentiment.py --config sentiment_config.ini --model_override --database_override > $dir/sentiment_analysis.log
 else
-    python $dir/sentiment.py >> $dir/sentiment_analysis.log
+    python $dir/sentiment.py --config sentiment_config.ini >> $dir/sentiment_analysis.log
 fi
+# rewrite feedback
+python feedback_recording.py
 # deactivate tensorflow
 source deactivate tensorflow
 echo "Analysis of comment data in $DATE done!" >> $dir/sentiment_analysis.log

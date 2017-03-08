@@ -734,7 +734,7 @@ class Sentiment():
         rating_score_array = np.asarray(phrases_df[rating_field]).copy().astype(float)
         # replace rating == 0 with sentiment_score
         for index, value in enumerate(rating_score_array):
-            if not value:
+            if int(value) == 0:
                 rating_score_array[index] = sentiment_score_array[index]
         # statistic count of conflict between rating and predict sentiment: score difference >= 3
         diff_array = np.abs(rating_score_array - sentiment_score_array)
@@ -1111,22 +1111,20 @@ def main_total_run(config, model_override=False, database_override=False, start_
 
 
 if __name__ == "__main__":
-    # load arguments in configuration file
-    config = ConfigParser.ConfigParser()
-    config.read('sentiment_config.ini')
-    # load log format
-    fileConfig("logging_conf.ini")
     # get model_override variable from command line using argparse module
-    """
     parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default='sentiment_config.ini',  help="Configuration file with parameters required for process pipeline")
     parser.add_argument("--model_override", action='store_true', help="Override existing Word2Vec and LSTM model and retrain one")
     parser.add_argument("--database_override", action='store_true', help="Use existing model to redo prediction of all data in database to override existing output database")
     parser.add_argument("--start_date", type=str, default=None, help="Use data after this date")
-    parser.add_argument("--end_date", type=str, default=None, help="Use data befor this date")
+    parser.add_argument("--end_date", type=str, default=None, help="Use data before this date")
     if len(sys.argv[1:]) == 0 or sys.argv[1] == '--help':
         parser.print_help()
         parser.exit()
     args = parser.parse_args()
+    # load arguments in configuration file
+    config = ConfigParser.ConfigParser()
+    config.read(args.config)
+    # load log format
+    fileConfig("logging_conf.ini")
     main_total_run(config=config, model_override=args.model_override, database_override=args.database_override, start_date=args.start_date, end_date=args.end_date)
-    """
-    main_total_run(config=config, model_override=True, database_override=True)
