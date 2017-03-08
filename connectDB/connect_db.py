@@ -10,7 +10,7 @@ import logging
 
 # class for connect to database
 class extractDataFromDB:
-    def __init__(self, localhost="120.24.87.197", username="root", password="78iU5478oT0hg", dbname="maxfun_qf", tbname="customer_behavior", enterprise_id="256"):
+    def __init__(self, localhost="your_local_host", username="username", password="your_password", dbname="maxfun_qf", tbname="customer_behavior", enterprise_id="256"):
         self.localhost = localhost
         self.username = username
         self.password = password

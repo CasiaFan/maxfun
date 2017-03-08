@@ -31,9 +31,9 @@ def real_time_run():
     # initial db connect class
     currentDB = extractDataFromDB()
     # database IP, user name, password, database selected
-    currentDB.localhost = "120.24.87.197"
+    currentDB.localhost = "your_localhost_ip"
     currentDB.username = "root"
-    currentDB.password = "78iU5478oT0hg"
+    currentDB.password = "your_password"
     currentDB.dbname = "maxfun_qf"
     currentDB.tbname = "customer_behavior"
     currentDB.enterprise_id = "256"

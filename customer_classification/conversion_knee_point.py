@@ -21,9 +21,9 @@ def get_conversion_rate(df):
     df_conv = pd.DataFrame(conversion_list, index=pur_count_list[1:], columns=['conversion_rate'])
     return df_conv
 
-def get_customer_counts_distribution(localhost="112.74.30.59",
-                                        username="fanzong",
-                                        password="maxfun",
+def get_customer_counts_distribution(localhost="your_localhost",
+                                        username="username",
+                                        password="password",
                                         dbname="maxfun_tp",
                                         tbname="transaction",
                                         min_cus=5000,
